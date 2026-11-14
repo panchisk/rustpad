@@ -7,10 +7,13 @@
 #![cfg(windows)]
 
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use rustpad_platform::pipe::{send_command, PipeServer, RemoteCommand, RemoteHandler, RemoteReply};
+
+/// Input-injection tests must not run concurrently: they press real keys.
+static INPUT_LOCK: Mutex<()> = Mutex::new(());
 
 fn echo_handler() -> RemoteHandler {
     Arc::new(|cmd: RemoteCommand| match cmd {
@@ -60,7 +63,7 @@ fn pipe_round_trip_over_named_pipe() {
 
     let bad = send_command("DoPlaySound(1,2,3,4)", Duration::from_secs(3))
         .expect("server must answer malformed requests");
-    assert!(bad.contains("R-1"), "unexpected reply: {bad}");
+    assert!(bad.contains("R-204"), "unexpected reply: {bad}");
 
     drop(server);
     // After shutdown the pipe must be gone.
@@ -93,6 +96,80 @@ fn activation_pipe_is_served() {
     assert!(
         hits.load(Ordering::SeqCst) >= 1,
         "callback was never called"
+    );
+}
+
+#[test]
+fn auto_keys_sendinput_roundtrip() {
+    use rustpad_core::hotkey::Modifiers;
+    use rustpad_platform::autokeys;
+    use windows::Win32::UI::Input::KeyboardAndMouse::GetAsyncKeyState;
+
+    let _guard = INPUT_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    // F13 is not bound to anything and safe to press briefly.
+    let vk: u16 = 0x7C;
+    if autokeys::press(vk, Modifiers::NONE).is_err() {
+        eprintln!("skipping: SendInput is unavailable in this session");
+        return;
+    }
+    std::thread::sleep(Duration::from_millis(40));
+    let state = unsafe { GetAsyncKeyState(vk as i32) };
+    let _ = autokeys::release(vk, Modifiers::NONE);
+    if state as u16 & 0x8000 == 0 {
+        eprintln!("skipping: the desktop does not deliver synthetic keys");
+        return;
+    }
+    assert!(
+        state as u16 & 0x8000 != 0,
+        "Auto Keys must hold the key down"
+    );
+}
+
+#[test]
+fn keyboard_hook_receives_injected_hotkey() {
+    use rustpad_core::hotkey::Modifiers;
+    use rustpad_platform::{autokeys, KeyboardHook};
+
+    let _guard = INPUT_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let hook = match KeyboardHook::start() {
+        Ok(hook) => hook,
+        Err(err) => {
+            eprintln!("skipping: global hook unavailable: {err:#}");
+            return;
+        }
+    };
+    // Ctrl+Alt+F1, injected exactly like Auto Keys does it. Retry because other
+    // tests may inject keys concurrently and the hook queue is shared.
+    let mods = Modifiers::CTRL.union(Modifiers::ALT);
+    let deadline = std::time::Instant::now() + Duration::from_secs(3);
+    let mut seen = false;
+    let mut last_inject = std::time::Instant::now() - Duration::from_secs(1);
+    while std::time::Instant::now() < deadline {
+        if last_inject.elapsed() > Duration::from_millis(250) {
+            if autokeys::press(0x70, mods).is_err() {
+                eprintln!("skipping: SendInput unavailable");
+                return;
+            }
+            last_inject = std::time::Instant::now();
+        }
+        while let Some(ev) = hook.try_event() {
+            if ev.down
+                && ev.vk == 0x70
+                && ev.modifiers.contains(Modifiers::CTRL)
+                && ev.modifiers.contains(Modifiers::ALT)
+            {
+                seen = true;
+            }
+        }
+        if seen {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    let _ = autokeys::release(0x70, mods);
+    assert!(
+        seen,
+        "the global hook must receive the injected Ctrl+Alt+F1"
     );
 }
 

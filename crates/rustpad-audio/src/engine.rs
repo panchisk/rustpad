@@ -16,7 +16,7 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
 use std::thread::JoinHandle;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, Context, Result};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
@@ -25,6 +25,7 @@ use crossbeam_channel::{bounded, Receiver, Sender};
 use parking_lot::Mutex;
 
 use crate::decode::decode_file;
+use crate::loopback::LoopbackHandle;
 use crate::mixer::Mixer;
 use crate::record::Recorder;
 use crate::resample::StreamResampler;
@@ -292,6 +293,9 @@ struct Engine {
     recorder: Arc<Mutex<Option<Recorder>>>,
     recording_path: Option<PathBuf>,
     recording_limit_ms: u64,
+    loopback: Option<LoopbackHandle>,
+    loopback_path: Option<PathBuf>,
+    loopback_started: Option<Instant>,
     capture: Option<cpal::Stream>,
 
     last_sound: Option<u32>,
@@ -323,6 +327,9 @@ impl Engine {
             recorder: Arc::new(Mutex::new(None)),
             recording_path: None,
             recording_limit_ms: 0,
+            loopback: None,
+            loopback_path: None,
+            loopback_started: None,
             capture: None,
             last_sound: None,
             last_voice: None,
@@ -511,6 +518,12 @@ impl Engine {
             self.maybe_finish_recording();
             self.publish_status();
         }
+        // Stop a running loopback capture cleanly before the thread ends.
+        if let Some(handle) = self.loopback.take() {
+            let _ = handle.stop();
+        }
+        self.loopback_path = None;
+        self.loopback_started = None;
     }
 
     fn handle(&mut self, cmd: EngineCommand) {
@@ -633,6 +646,12 @@ impl Engine {
                 self.config.block_voice = v;
             }
             EngineCommand::StartRecording { path, max_secs } => {
+                if self.loopback.is_some() {
+                    let _ = self
+                        .evt_tx
+                        .send(EngineEvent::Error("recording already in progress".into()));
+                    return;
+                }
                 let sr = self
                     .mic_output
                     .as_ref()
@@ -645,6 +664,34 @@ impl Engine {
                 let _ = self.evt_tx.send(EngineEvent::RecordingStarted);
             }
             EngineCommand::StopRecording => self.stop_recording(false),
+            EngineCommand::StartLoopbackRecording { path, max_secs } => {
+                if self.loopback.is_some() || self.recorder.lock().is_some() {
+                    let _ = self
+                        .evt_tx
+                        .send(EngineEvent::Error("recording already in progress".into()));
+                    return;
+                }
+                match LoopbackHandle::start(path.clone(), max_secs) {
+                    Ok(handle) => {
+                        self.loopback = Some(handle);
+                        self.loopback_path = Some(path);
+                        self.loopback_started = Some(Instant::now());
+                        // `0` means "until stopped", still capped at 30 minutes.
+                        let effective_secs = if max_secs == 0 {
+                            crate::loopback::MAX_UNLIMITED_SECS
+                        } else {
+                            max_secs
+                        };
+                        self.recording_limit_ms = u64::from(effective_secs) * 1000;
+                        let _ = self.evt_tx.send(EngineEvent::RecordingStarted);
+                    }
+                    Err(err) => {
+                        let _ = self
+                            .evt_tx
+                            .send(EngineEvent::Error(format!("loopback: {err:#}")));
+                    }
+                }
+            }
             EngineCommand::SetDevices(cfg) => {
                 self.config = cfg;
                 if let Err(err) = self.open_streams() {
@@ -655,7 +702,26 @@ impl Engine {
         }
     }
 
-    fn stop_recording(&mut self, limit: bool) {
+    fn stop_recording(&mut self, _limit: bool) {
+        if let Some(handle) = self.loopback.take() {
+            let path = self.loopback_path.take();
+            self.loopback_started = None;
+            self.recording_limit_ms = 0;
+            let duration_ms = u64::from(handle.stop());
+            if let Some(path) = path {
+                if duration_ms > 0 {
+                    let _ = self
+                        .evt_tx
+                        .send(EngineEvent::RecordingFinished { path, duration_ms });
+                } else {
+                    let _ = self.evt_tx.send(EngineEvent::Error(
+                        "loopback: no audio captured".to_string(),
+                    ));
+                }
+            }
+            return;
+        }
+
         let recorder = self.recorder.lock().take();
         let Some(recorder) = recorder else { return };
         let path = self.recording_path.take();
@@ -683,14 +749,22 @@ impl Engine {
                 }
             }
         }
-        if limit {
-            let _ = self
-                .evt_tx
-                .send(EngineEvent::Error("recording limit reached".to_string()));
-        }
     }
 
     fn maybe_finish_recording(&mut self) {
+        if self.loopback.is_some() {
+            if self.recording_limit_ms == 0 {
+                return;
+            }
+            let reached = self
+                .loopback_started
+                .map(|started| started.elapsed().as_millis() as u64 >= self.recording_limit_ms)
+                .unwrap_or(false);
+            if reached {
+                self.stop_recording(true);
+            }
+            return;
+        }
         if self.recording_limit_ms == 0 {
             return;
         }

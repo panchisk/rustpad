@@ -37,7 +37,8 @@ OBS, CS2, etc. Your voice and the soundboard are mixed together.
 - Sound list compatible with Soundpad: sounds, categories, icons, colors, `customTag` tags,
   hotbar pages, `.spl` reading/writing, `stats.spl` play counts, daily backups. Sound identity
   follows Soundpad's rule (0-based document order), so lists stay readable by Soundpad after
-  edits and deletions.
+  edits and deletions. The file `hash` is Soundpad's real volume-serial + NTFS file-id tuple,
+  so imported and newly added sounds share play counts with Soundpad.
 - Audio: WAV / MP3 / FLAC / OGG-Vorbis / AAC (M4A) decoding, on-the-fly resampling, polyphonic
   mixing, per-sound and master volume, pause/resume, seek, next/previous/random. Starting a new
   sound stops the previous one by default (switchable in *Settings → Audio* for overlapping
@@ -47,14 +48,18 @@ OBS, CS2, etc. Your voice and the soundboard are mixed together.
   plays.
 - Global hotkeys: per-sound keys, modifier-only push-to-talk, index hotkeys (`Ctrl+1..0`),
   numpad hotkeys, hotkey enable/disable toggle, hotkey overview.
+- Auto Keys: holds a configurable key + modifiers with `SendInput` while a sound plays
+  (simulated push-to-talk), optionally only for hotkey-triggered playback.
 - Hotbar: pages, 6-column grid, per-cell colors and hotkeys.
 - Loudness: off / fixed dB adjustment / dynamic per-sound normalisation to a target level.
-- Recorder: microphone capture to WAV with silence trimming and peak normalisation.
+- Recorder: microphone **or** system output (WASAPI loopback, "what you hear") to WAV with
+  silence trimming and peak normalisation.
 - Text-to-speech: Windows SAPI voices, rate/pitch, play on speakers/mic/both.
 - Sound editor: waveform, selection, crop, fades, reverse, normalise, trim silence, karaoke,
   speed, boost, save as WAV / add to list.
-- Remote control: named pipe `\\.\pipe\sp_remote_control`, Soundpad command names, plus
-  `rustpad -rc "DoPlaySound(1)"` on the command line.
+- Remote control: named pipe `\\.\pipe\sp_remote_control`, Soundpad command names and
+  response framing (payload lines + `R<code>`), plus `rustpad -rc "DoPlaySound(1)"` on the
+  command line.
 - Windows integration: single instance, autostart, dark/light theme, Russian/English UI,
   Windows "duck other sounds" preference, drag & drop, file dialogs, open another `.spl`
   (`Ctrl+O` or `rustpad --list file.spl`).
@@ -100,9 +105,9 @@ Supported: `DoPlaySound`, `DoPlaySoundFromCategory`, `DoPlayRandomSound`,
 `DoSaveSoundlist`, `GetSoundFileCount`, `GetSoundlist`, `GetVersion`,
 `GetRemoteControlVersion`.
 
-Response framing could not be recovered from static evidence; RustPad replies with optional
-payload lines followed by `R<code>` (0 = success). Fire-and-forget clients (the common Stream
-Deck pattern) are unaffected.
+Response framing matches Soundpad (confirmed from its UTF-16 literals): optional payload
+line(s), then `R<code>` — `R0` for success, `R-204` for a malformed call and `R-404` for an
+unknown command. Error codes `R-200/-400/-403/-409/-500` are defined in `docs/EVIDENCE.md`.
 
 ## Verification
 
@@ -110,13 +115,16 @@ Performed on this machine against real Soundpad data:
 
 | Check | Result |
 |---|---|
-| `cargo test --workspace` | **67 tests pass** (37 audio/DSP, 12 sound-list/stats, 13 remote-control parser, 5 Windows integration) |
+| `cargo test --workspace` | **75 tests pass** (41 audio/DSP + loopback, 12 sound-list/stats, 15 remote-control, 7 Windows integration) |
 | Parse `%APPDATA%\Leppsoft\soundlist.spl` | 158 sounds, 9 categories, 1 hotbar page |
 | Parse `%USERPROFILE%\Documents\soundpad\soundlist.spl` | 114 sounds, 11 categories, tags/colors preserved |
 | Decode WAV / MP3 (48 kHz stereo, 44.1 kHz mono) | correct duration, rate, channels, peak/RMS |
 | Round-trip `.spl` | 158/114 sounds, same categories/attributes; unknown attributes preserved |
 | Remote control | `GetVersion()` → `0.1.0`, `GetSoundFileCount()` → 158/114, `DoPlaySoundFromCategory(...)` starts playback, `Stop()` stops |
-| Audio engine | tone playback with position/level metering, recording to WAV, finished/error events |
+| Audio engine | tone playback with position/level metering, microphone and 1 s loopback recordings to WAV |
+| Auto Keys | app held F13 during playback and released it after (`GetAsyncKeyState`); the global hook receives injected Ctrl+Alt+F1 |
+| Soundpad hash | computed hash equals the live list's `hash` for existing files |
+| Remote framing | payload + `R0`; malformed calls `R-204`, unknown commands `R-404` |
 | TTS | SAPI voice enumeration + WAV synthesis (RIFF/PCM/mono/22050 Hz/16-bit) |
 | GUI | main window, settings (6 tabs), TTS, editor, hotkeys overview and hotbar rendered and exercised |
 
@@ -125,17 +133,16 @@ There is no automated GUI test; UI checks were manual screenshots during develop
 ## Compatibility notes
 
 - `.spl` files are read and written with the observed Soundpad schema. Unknown attributes are
-  preserved. Hotbar item XML is an extension (`<HotbarItem id=… />`) because no non-empty
-  Soundpad hotbar page was available to sample.
-- Soundpad's file `hash` algorithm is unknown; existing hashes are preserved so imported
-  `stats.spl` play counts keep working. New files get a synthetic hash.
-- No DRM, licensing, Steam integration, Auto-Keys key simulation, speaker-loopback recording,
-  MIDI, or APO installation. The *Auto Keys* toggle is stored but does not synthesize keys.
-  See `docs/ARCHITECTURE.md` for the full gap list.
-- Hotkeys are observed, never swallowed (`CallNextHookEx` always runs), so a bound key still
-  reaches the focused application.
+  preserved. Hotbar items use Soundpad's own element/attribute names (`<HotbarItem soundId=…>`,
+  recovered from the binary's literal pool); `altCode` is preserved but not interpreted.
+- File hashes are Soundpad's real volume-serial + NTFS file-id tuple, so imported and newly
+  added sounds share the same `stats.spl` play counts.
+- There is no DRM, licensing or Steam integration: every feature works without Soundpad.
 - Microphone-target sounds are delayed by *Settings → Audio → Delay*; microphone passthrough
-  itself is not delayed.
+  itself is not delayed. Hotkeys are observed, never swallowed (`CallNextHookEx` always runs),
+  so a bound key still reaches the focused application.
+- Loopback recording captures the default output device mix, not individual applications.
+  Opus decoding remains disabled; WAV/MP3/FLAC/OGG-Vorbis/AAC are supported.
 
 ## Licence
 

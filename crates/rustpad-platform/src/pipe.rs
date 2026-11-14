@@ -84,10 +84,24 @@ impl RemoteReply {
     }
 
     pub fn error(message: impl Into<String>) -> Self {
+        Self::with_code(-1, message)
+    }
+
+    /// Reply with Soundpad's error codes: `-204` malformed call, `-404` unknown
+    /// command (both observed as literals in `Soundpad.exe`).
+    pub fn with_code(code: i32, message: impl Into<String>) -> Self {
         RemoteReply {
-            code: -1,
+            code,
             lines: vec![message.into()],
         }
+    }
+
+    pub fn invalid(message: impl Into<String>) -> Self {
+        Self::with_code(-204, message)
+    }
+
+    pub fn not_found(message: impl Into<String>) -> Self {
+        Self::with_code(-404, message)
     }
 
     pub fn with_line(mut self, line: impl Into<String>) -> Self {
@@ -542,7 +556,11 @@ mod imp {
                             Ok(command) => handler(command),
                             Err(err) => {
                                 tracing::debug!("remote control: rejected request: {err}");
-                                RemoteReply::error(err)
+                                if err.starts_with("unknown command") {
+                                    RemoteReply::not_found(err)
+                                } else {
+                                    RemoteReply::invalid(err)
+                                }
                             }
                         };
                         let wire = reply.to_wire();

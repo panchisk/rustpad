@@ -87,6 +87,37 @@ fn main() -> Result<()> {
         );
         return Ok(());
     }
+    if args.iter().any(|a| a == "--selftest-loopback") {
+        let path = std::env::temp_dir().join("rustpad-selftest-loopback.wav");
+        let handle =
+            rustpad_audio::EngineHandle::spawn(rustpad_audio::types::EngineConfig::default());
+        handle.send(rustpad_audio::EngineCommand::StartLoopbackRecording {
+            path: path.clone(),
+            max_secs: 1,
+        });
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(4);
+        let mut finished = false;
+        while std::time::Instant::now() < deadline {
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            while let Some(ev) = handle.try_event() {
+                println!("event: {ev:?}");
+                if matches!(ev, rustpad_audio::EngineEvent::RecordingFinished { .. }) {
+                    finished = true;
+                }
+            }
+            if finished {
+                break;
+            }
+        }
+        handle.shutdown();
+        if !finished {
+            anyhow::bail!("loopback recording did not finish");
+        }
+        let size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+        println!("loopback: {size} bytes at {}", path.display());
+        let _ = std::fs::remove_file(&path);
+        return Ok(());
+    }
     if args.iter().any(|a| a == "--selftest-audio") {
         return selftest_audio();
     }
@@ -268,10 +299,7 @@ fn headless_import(paths: Vec<PathBuf>) -> Result<()> {
             Ok(ms) => {
                 let id = list.add_path(path.clone(), ms);
                 if let Some(s) = list.find_mut(id) {
-                    s.hash = rustpad_core::synthetic_hash(
-                        &path,
-                        std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0),
-                    );
+                    s.hash = app::hash_for_path(&path);
                 }
                 println!("added: {}", path.display());
             }
@@ -343,6 +371,7 @@ usage:
   rustpad --import <files...>  append files to the configured sound list and exit
   rustpad --list-devices       list WASAPI input/output devices
   rustpad --selftest-audio     play a test tone and record 2.5 s from the default mic
+  rustpad --selftest-loopback  record 1 s of system output (WASAPI loopback)
   rustpad --selftest-list [f]  parse a .spl file and print its contents
   rustpad --selftest-decode <f> decode an audio file and print its format/levels
   rustpad --selftest-rewrite <in> <out>  load a .spl and write it back

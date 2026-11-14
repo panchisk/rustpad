@@ -145,7 +145,15 @@ Soundpad.exe audio control (UniteFxControl)
   `DoPlayRandomSoundFromCategory(cat,spk,mic)`, `DoPlayPreviousSound()`, `DoPlayNextSound()`,
   `DoPlaySelectedSound()`, `DoPlayCurrentSoundAgain()`, `DoPlayPreviouslyPlayedSound()`,
   `DoAddSound(path)`, `DoRemoveSelectedEntries()`, `DoRemoveCategory()`, `DoSaveSoundlist()`,
-  `GetSoundFileCount()`, `GetSoundlist()`, `GetVersion()`, `GetRemoteControlVersion()`.
+  `GetSoundFileCount()`, `GetSoundlist()`, `GetVersion()`, `GetRemoteControlVersion()`,
+  `GetCategory()`, `GetCategories()`, `GetPlaybackDurationInMs()`, `GetPlaybackPositionInMs()`,
+  `GetRecordingPositionInMs()`, `GetRecordingPeak()`, `GetStatusBarText()`, `GetTitleText()`,
+  `GetPlayStatus()`, `GetVolume()`, `IsMuted()`, `IsAlive()`, `SetVolume()`, `IsTrial()`,
+  `DoRedo()`.
+- **Response framing is confirmed**: optional payload line(s), then a line `R<code>`; success is
+  `R0`, errors use literal codes `R-200`, `R-204`, `R-400`, `R-403`, `R-404`, `R-409`, `R-500`
+  (all present as UTF-16 literals). Duration responses use the line format `": %d ms"`.
+  `R-404` = command not found, `R-403` = not available (CLI/trial), `R-204` = malformed call.
 - Error strings: `Unknown parameter: %s`, `Call has wrong format: %s`,
   `: Command not found.`, `: Command not available from command line.`,
   `: Command not available in trial version.`, `Remote control receive/response failed: %x`.
@@ -182,17 +190,22 @@ Soundpad.exe audio control (UniteFxControl)
 - Optional sound attributes seen in a second live list: `color="RRGGBB"` and
   `customTag="..."` (free-form tag shown in the Tag column). [OBS]
 - `duration` is `m:ss` (minutes may exceed 59). `addedOn` is `YYYY-MM-DD`. [OBS]
-- `hash` = `A-B-C`; A constant for the list, B multiples of 65536, C file-dependent.
-  Purpose is stats identity, algorithm **[UNK]** (not needed for compatibility; preserve verbatim).
+- `hash` = `A-B-C` and the algorithm is **recovered exactly**:
+  - `A` = volume serial number of the file's volume, decimal (`0x26BCC2AE` → `649904814`);
+  - `B` = `nFileIndexHigh`, `C` = `nFileIndexLow` from `GetFileInformationByHandle`
+    (`BY_HANDLE_FILE_INFORMATION`), decimal. `B` is therefore a multiple of 65536.
+  - Verified against live list entries (e.g. file id `0x000200000001ee91` →
+    `649904814-131072-126609`). RustPad reproduces this, so new files get Soundpad-compatible
+    hashes and `stats.spl` works in both directions.
 - `color` is `RRGGBB` uppercase hex. Icons: `gen_<letter>`, `stock_icon_cat_*`, custom paths. [OBS]
 - `type="1" hidden="true"` is the built-in **"All sounds"** view: it has no `<Sound>`
   children and implicitly contains the whole list. It is not a blacklist. [OBS: it is the
   first category of both live lists and all real categories are separate.]
-- `<HotbarPage>` item schema **[UNK]** — no non-empty page existed in either sampled file;
-  `HotbarItem` and `hotkeyKey`/`hotkeyKeyModifiers` strings exist in the binary. RustPad reads
-  both `<Sound id=".."/>` and the legacy `<HotbarItem id=".." color=".." label=".."/>`, and
-  writes the former (the element name Soundpad uses for references elsewhere). Unknown
-  attributes/elements are preserved on round-trip.
+- Hotbar item schema (from Soundpad's UTF-16 literal pool): element `HotbarItem`, attribute
+  `soundId`, plus `altCode`; page element `HotbarPage`. The pool order is
+  `SoundFile`, `HotbarItem`, `HotbarPage`, `altCode`, `id`, `soundId`. RustPad writes
+  `<HotbarItem soundId="..">` and reads `soundId`/`id`/`<Sound id>`; unknown attributes are
+  preserved. `altCode` is preserved but not interpreted.
 
 `stats.spl`:
 ```xml
@@ -251,4 +264,6 @@ Notification sounds are relative paths under the install dir (`\sounds\notify\*.
   behavior is [INF] from strings, exports, imports, resources, formats and runtime state.
 - Static JS/Electron routes do not apply (native app).
 - Deep analysis of the APO data plane (shared-memory layout, chunk protocol) is [UNK].
-- `hash` algorithm, hotbar item XML schema, modifier bitmask: [UNK].
+- Hotbar `altCode` semantics and the exact page-level attribute set remain [UNK]; they are
+  preserved verbatim on round-trip.
+- Hotkey modifier bitmask mapping (`Shift=1, Ctrl=2, Alt=4, Win=8`) is [INF] from behaviour.

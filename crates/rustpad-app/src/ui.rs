@@ -500,11 +500,9 @@ fn draw_toolbar(state: &mut AppState, ui: &mut egui::Ui, uis: &mut UiState, acts
             state.cfg.hotkeys_enabled = state.hotkeys_enabled;
         }
         let ak_label = state.tr("Auto Keys", "Автоклавиши");
-        if ui
-            .toggle_value(&mut state.auto_keys_enabled, ak_label)
-            .changed()
-        {
-            state.cfg.auto_keys_enabled = state.auto_keys_enabled;
+        let mut auto_keys = state.auto_keys_enabled;
+        if ui.toggle_value(&mut auto_keys, ak_label).changed() {
+            state.set_auto_keys_enabled(auto_keys);
         }
 
         ui.separator();
@@ -1766,9 +1764,94 @@ fn settings_hotkeys(state: &mut AppState, ui: &mut egui::Ui, acts: &mut Vec<Act>
     {
         acts.push(Act::ResetHotkeys);
     }
+
+    ui.separator();
+    ui.label(egui::RichText::new(state.tr("Auto Keys", "Автоклавиши")).strong());
+    let mut auto = state.cfg.auto_keys_enabled;
+    let auto_label = state.tr(
+        "Hold a key while a sound plays (simulated push-to-talk)",
+        "Удерживать клавишу во время звука (имитация PTT)",
+    );
+    if ui.checkbox(&mut auto, auto_label).changed() {
+        state.cfg.auto_keys_enabled = auto;
+        state.auto_keys_enabled = auto;
+        if !auto {
+            state.stop();
+        }
+        state.cfg_dirty();
+    }
+    ui.horizontal(|ui| {
+        let hk = if state.cfg.auto_keys_vk == 0 {
+            Hotkey::modifier_only(rustpad_core::hotkey::Modifiers(
+                state.cfg.auto_keys_modifiers,
+            ))
+        } else {
+            Hotkey::new(
+                rustpad_core::hotkey::Modifiers(state.cfg.auto_keys_modifiers),
+                state.cfg.auto_keys_vk,
+            )
+        };
+        ui.label(format!(
+            "{}: {}",
+            state.tr("Key", "Клавиша"),
+            if state.cfg.auto_keys_vk == 0 {
+                "—".to_string()
+            } else {
+                hk.display()
+            }
+        ));
+        if ui
+            .button(state.tr("Set key…", "Назначить клавишу…"))
+            .clicked()
+        {
+            acts.push(Act::Capture(
+                HotkeyTarget::AutoKeys,
+                state.tr("Auto Keys", "Автоклавиши").to_string(),
+            ));
+        }
+        if state.cfg.auto_keys_vk != 0 && ui.button(state.tr("Clear", "Сбросить")).clicked()
+        {
+            acts.push(Act::ClearHotkey(HotkeyTarget::AutoKeys));
+        }
+    });
+    let mut only_hotkey = state.cfg.auto_keys_only_hotkey;
+    if ui
+        .checkbox(
+            &mut only_hotkey,
+            state.tr(
+                "Only when the sound was started by a hotkey",
+                "Только если звук запущен клавишей",
+            ),
+        )
+        .changed()
+    {
+        state.cfg.auto_keys_only_hotkey = only_hotkey;
+        state.cfg_dirty();
+    }
+    ui.small(state.tr(
+        "The key is pressed when playback starts and released when it stops.",
+        "Клавиша нажимается при старте воспроизведения и отпускается при остановке.",
+    ));
 }
 
 fn settings_recorder(state: &mut AppState, ui: &mut egui::Ui, acts: &mut Vec<Act>) {
+    ui.label(egui::RichText::new(state.tr("Source", "Источник")).strong());
+    let mut source = state.cfg.record_source;
+    ui.radio_value(
+        &mut source,
+        rustpad_core::RecordSource::Microphone,
+        state.tr("Microphone", "Микрофон"),
+    );
+    ui.radio_value(
+        &mut source,
+        rustpad_core::RecordSource::Speakers,
+        state.tr("Speakers (what you hear)", "Динамики (что слышно)"),
+    );
+    if source != state.cfg.record_source {
+        state.cfg.record_source = source;
+        state.cfg_dirty();
+    }
+    ui.add_space(6.0);
     ui.label(egui::RichText::new(state.tr("Recordings folder", "Папка записей")).strong());
     ui.horizontal(|ui| {
         ui.label(state.cfg.recording_dir.display().to_string());
@@ -2076,6 +2159,26 @@ fn draw_recorder_window(state: &mut AppState, ctx: &egui::Context, acts: &mut Ve
         .default_width(430.0)
         .resizable(true)
         .show(ctx, |ui| {
+            let mut source = state.cfg.record_source;
+            ui.add_enabled_ui(!state.recording, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label(state.tr("Source:", "Источник:"));
+                    ui.radio_value(
+                        &mut source,
+                        rustpad_core::RecordSource::Microphone,
+                        state.tr("Microphone", "Микрофон"),
+                    );
+                    ui.radio_value(
+                        &mut source,
+                        rustpad_core::RecordSource::Speakers,
+                        state.tr("Speakers", "Динамики"),
+                    );
+                });
+            });
+            if source != state.cfg.record_source {
+                state.cfg.record_source = source;
+                state.cfg_dirty();
+            }
             ui.horizontal(|ui| {
                 if state.recording {
                     if ui.button(stop).clicked() {

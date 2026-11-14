@@ -50,9 +50,14 @@ pub struct ImportResult {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum HotkeyTarget {
     Action(String),
+    /// The simulated key held by Auto Keys.
+    AutoKeys,
     Sound(u32),
     Category(usize),
-    Hotbar { page: usize, item: usize },
+    Hotbar {
+        page: usize,
+        item: usize,
+    },
 }
 
 pub struct HotkeyCapture {
@@ -267,6 +272,10 @@ pub struct AppState {
     pressed: HashSet<u32>,
     mic_hold: Option<u32>,
     duck_prev: Option<u32>,
+    /// True while a global hotkey is being handled (used by Auto Keys filtering).
+    hotkey_trigger: bool,
+    /// Whether Auto Keys currently holds its simulated key down.
+    auto_keys_held: bool,
 
     _pipe: Option<PipeServer>,
     _guard: Option<InstanceGuard>,
@@ -402,6 +411,8 @@ impl AppState {
             pressed: HashSet::new(),
             mic_hold: None,
             duck_prev: None,
+            hotkey_trigger: false,
+            auto_keys_held: false,
             _pipe: pipe,
             _guard: guard,
             quit_requested: false,
@@ -511,6 +522,8 @@ impl AppState {
             self.engine.send(EngineCommand::StopAll);
             self.current_sound = None;
         }
+        self.release_auto_keys();
+        self.press_auto_keys();
         let gain = self.sound_gain(&sound);
         let req = PlayRequest {
             sound_id: id,
@@ -542,7 +555,47 @@ impl AppState {
 
     pub fn stop(&mut self) {
         self.engine.send(EngineCommand::StopAll);
+        self.release_auto_keys();
         self.restore_ducking();
+    }
+
+    pub fn set_auto_keys_enabled(&mut self, enabled: bool) {
+        self.auto_keys_enabled = enabled;
+        self.cfg.auto_keys_enabled = enabled;
+        if !enabled {
+            self.release_auto_keys();
+        }
+        self.cfg_dirty();
+    }
+
+    fn auto_keys_active(&self) -> bool {
+        self.cfg.auto_keys_enabled
+            && (!self.cfg.auto_keys_only_hotkey || self.hotkey_trigger)
+            && self.cfg.auto_keys_vk != 0
+    }
+
+    fn press_auto_keys(&mut self) {
+        if self.auto_keys_held || !self.auto_keys_active() {
+            return;
+        }
+        let vk = self.cfg.auto_keys_vk.min(u16::MAX as u32) as u16;
+        let mods = Modifiers(self.cfg.auto_keys_modifiers);
+        match rustpad_platform::autokeys::press(vk, mods) {
+            Ok(()) => self.auto_keys_held = true,
+            Err(err) => self.toast(format!("Auto Keys: {err:#}"), true),
+        }
+    }
+
+    fn release_auto_keys(&mut self) {
+        if !self.auto_keys_held {
+            return;
+        }
+        self.auto_keys_held = false;
+        let vk = self.cfg.auto_keys_vk.min(u16::MAX as u32) as u16;
+        let mods = Modifiers(self.cfg.auto_keys_modifiers);
+        if let Err(err) = rustpad_platform::autokeys::release(vk, mods) {
+            tracing::warn!("Auto Keys release failed: {err:#}");
+        }
     }
 
     pub fn toggle_pause(&mut self) {
@@ -675,10 +728,7 @@ impl AppState {
             }
             let tx = self.import_tx.clone();
             std::thread::spawn(move || {
-                let hash = synthetic_hash(
-                    &path,
-                    std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0),
-                );
+                let hash = hash_for_path(&path);
                 match rustpad_audio::decode_file(&path) {
                     Ok(audio) => {
                         let loudness = dsp::rms_db(&audio.samples);
@@ -953,10 +1003,20 @@ impl AppState {
         let stamp = timestamp();
         let path = dir.join(format!("recording-{stamp}.wav"));
         self.recording = true;
-        self.engine.send(EngineCommand::StartRecording {
-            path,
-            max_secs: self.cfg.recording_max_secs,
-        });
+        match self.cfg.record_source {
+            rustpad_core::RecordSource::Microphone => {
+                self.engine.send(EngineCommand::StartRecording {
+                    path,
+                    max_secs: self.cfg.recording_max_secs,
+                });
+            }
+            rustpad_core::RecordSource::Speakers => {
+                self.engine.send(EngineCommand::StartLoopbackRecording {
+                    path,
+                    max_secs: self.cfg.recording_max_secs,
+                });
+            }
+        }
     }
 
     pub fn stop_recording(&mut self) {
@@ -1073,10 +1133,7 @@ impl AppState {
             return;
         }
         let loudness = dsp::rms_db(&ed.audio.samples);
-        let hash = synthetic_hash(
-            &path,
-            std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0),
-        );
+        let hash = hash_for_path(&path);
         let duration = ed.audio.duration_ms();
         let title = ed.title.clone();
         self.add_sound_now(path, duration, Some(loudness), hash);
@@ -1274,6 +1331,23 @@ impl AppState {
                 self.cfg.hotkeys.insert(action.clone(), hk);
                 self.toast(format!("{action} = {hk}"), false);
             }
+            HotkeyTarget::AutoKeys => {
+                let Some(vk) = hk.key else {
+                    self.toast(
+                        self.tr(
+                            "Auto Keys needs a non-modifier key",
+                            "Для автоклавиши нужна обычная клавиша",
+                        ),
+                        true,
+                    );
+                    return;
+                };
+                self.cfg.auto_keys_vk = vk as u32;
+                self.cfg.auto_keys_modifiers = hk.modifiers.0;
+                self.toast(format!("Auto Keys = {hk}"), false);
+                self.cfg_dirty();
+                return;
+            }
             HotkeyTarget::Sound(id) => {
                 if let Some(s) = self.list.find_mut(id) {
                     s.hotkey = Some(hk);
@@ -1302,6 +1376,12 @@ impl AppState {
         match target {
             HotkeyTarget::Action(action) => {
                 self.cfg.hotkeys.remove(action);
+            }
+            HotkeyTarget::AutoKeys => {
+                self.cfg.auto_keys_vk = 0;
+                self.cfg.auto_keys_modifiers = 0;
+                self.cfg_dirty();
+                return;
             }
             HotkeyTarget::Sound(id) => {
                 if let Some(s) = self.list.find_mut(*id) {
@@ -1404,6 +1484,8 @@ impl AppState {
                             self.play_sound(it.sound_id, self.play_mode);
                         }
                     }
+                    // Auto Keys is a simulated output key, not a trigger.
+                    HotkeyTarget::AutoKeys => {}
                 }
                 let _ = label;
                 return;
@@ -1520,6 +1602,9 @@ impl AppState {
             }
             a::AUTO_KEYS_TOGGLE => {
                 self.auto_keys_enabled = !self.auto_keys_enabled;
+                if !self.auto_keys_enabled {
+                    self.release_auto_keys();
+                }
                 let on = self.auto_keys_enabled;
                 self.toast(
                     if on {
@@ -1668,6 +1753,7 @@ impl AppState {
                 }
                 EngineEvent::Finished { .. } => {
                     self.current_sound = None;
+                    self.release_auto_keys();
                     self.restore_ducking();
                 }
                 EngineEvent::RecordingStarted => {
@@ -1686,7 +1772,13 @@ impl AppState {
                     );
                     self.postprocess_recording(path);
                 }
-                EngineEvent::Error(err) => self.toast(err, true),
+                EngineEvent::Error(err) => {
+                    if err.contains("loopback") || err.contains("recording") {
+                        self.recording = false;
+                    }
+                    self.release_auto_keys();
+                    self.toast(err, true);
+                }
                 EngineEvent::MicLevel(_) | EngineEvent::OutputLevel(_) => {}
             }
         }
@@ -1714,7 +1806,7 @@ impl AppState {
                         path.clone(),
                         rustpad_audio::decode::probe_duration_ms(&path).unwrap_or(0),
                         None,
-                        synthetic_hash(&path, 0),
+                        hash_for_path(&path),
                     );
                     if let Ok(audio) = rustpad_audio::decode_file(&path) {
                         let gain = self.sound_gain(self.list.find(id).expect("just added"));
@@ -1744,7 +1836,9 @@ impl AppState {
             }
         }
         for ev in key_events {
+            self.hotkey_trigger = true;
             self.handle_key(ev);
+            self.hotkey_trigger = false;
         }
 
         self.save_stats_if_due(false);
@@ -1787,6 +1881,7 @@ impl AppState {
     }
 
     pub fn shutdown(&mut self) {
+        self.release_auto_keys();
         self.save_config();
         self.save_stats_if_due(true);
         if self.dirty {
@@ -1961,6 +2056,14 @@ pub fn action_label(action: &str) -> &'static str {
 
 pub fn hotkey_label(hk: Option<Hotkey>) -> String {
     hk.map(|h| h.display()).unwrap_or_default()
+}
+
+/// Soundpad's own `hash` (volume serial + NTFS file id), falling back to the
+/// synthetic hash only when the file id is unavailable.
+pub fn hash_for_path(path: &std::path::Path) -> String {
+    rustpad_platform::soundpad_hash(path).unwrap_or_else(|_| {
+        synthetic_hash(path, std::fs::metadata(path).map(|m| m.len()).unwrap_or(0))
+    })
 }
 
 pub fn rgb_to_egui(c: Rgb) -> egui::Color32 {

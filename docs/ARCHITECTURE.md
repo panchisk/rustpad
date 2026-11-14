@@ -69,6 +69,22 @@ engine generation; a decode that finishes for an older generation is dropped ins
 starting mid-way through the new sound. `StopSound(id)` stops only the voices tagged with that
 sound id, so push-to-talk release cannot silence overlapping sounds.
 
+### Auto Keys, loopback and file identity
+
+**Auto Keys** (`rustpad-platform::autokeys`) synthesizes a configurable key + modifiers with
+`SendInput` for as long as a sound plays and releases it on stop/finish. It can be limited to
+hotkey-triggered playback, which is the usual push-to-talk setup. Because the global hook never
+swallows keys, the synthetic key still reaches the focused game/voice app.
+
+**Recorder** has two sources. Microphone capture uses the existing cpal input stream;
+*Speakers* starts `rustpad-audio::loopback`, a dedicated WASAPI thread on the default render
+endpoint (`AUDCLNT_STREAMFLAGS_LOOPBACK`, with `AUTOCONVERTPCM` when available) that converts the
+mix format to f32 and writes a WAV on stop. Both sources share the same limit/trim/normalise path.
+
+**Sound identity** is not a content hash: `rustpad-platform::fileid::soundpad_hash` returns
+`<volume serial>-<file id high>-<file id low>` from `GetFileInformationByHandle`, exactly the
+`hash` Soundpad writes, so imported and newly added files share one play-count database.
+
 ### Threading and real-time safety
 
 - The audio callbacks lock one `Mixer`/`MicBus` mutex and render into a scratch Vec; the mixer
@@ -84,7 +100,7 @@ See `docs/EVIDENCE.md` §5. Key mapping:
 
 | `.spl` | model |
 |---|---|
-| `<Sound id hash url artist title duration addedOn color tag>` | `Sound` |
+| `<Sound hash url artist title duration addedOn color customTag>` (no id) | `Sound` |
 | `<Categories><Category name icon color type hidden>` + `<Sound id>` refs | `Category` |
 | `<Hotbar><HotbarPage>` + `<HotbarItem>`/`<Sound id>` | `HotbarPage`, `HotbarItem` |
 | `<Stats><Sound hash playCount lastPlayedOn>` | `Stats` |
@@ -102,20 +118,18 @@ system default and reports an event.
 ## Feature parity and gaps
 
 Implemented: list/categories/hotbar, playback routing, volumes, normalisation, delay, block
-voice, hotkeys (combos, modifier-only, index, numpad), recorder, TTS, editor, remote control,
+voice, hotkeys (combos, modifier-only, index, numpad), Auto Keys (`SendInput`), recorder
+(microphone **or** WASAPI loopback), exact Soundpad file hashes, TTS, editor, remote control,
 single instance, autostart, ducking, themes, Russian/English UI.
 
-Not implemented (honest gaps):
+Deliberate differences and remaining gaps:
 
 | Soundpad feature | Status |
 |---|---|
 | Signed SFX APO injection into every app's mic | replaced by virtual-cable routing; driver signing not feasible |
 | Steam licensing / trial limits | intentionally absent |
-| Auto Keys (synthetic key press/hold for push-to-talk) | UI toggle stored, no `SendInput` simulation yet |
-| Record *speakers* (loopback) | microphone recording only; WASAPI loopback capture not wired |
 | Opus decoding | Symphonia codec not enabled |
-| Soundpad's `hash` algorithm | unknown; preserved for imported files |
-| Hotbar item XML schema | unknown; additive extension used |
+| Hotbar `altCode` / page attribute semantics | preserved verbatim, not interpreted |
 | Hotkey modifier bitmask import | inferred mapping (`Shift=1, Ctrl=2, Alt=4, Win=8`) |
 | Category index (two-digit) hotkey routing | config stored, not applied |
 | Tray icon / minimize to tray | no tray integration yet (window minimize only) |

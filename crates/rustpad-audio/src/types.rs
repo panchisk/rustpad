@@ -135,6 +135,11 @@ pub enum EngineCommand {
         max_secs: u32,
     },
     StopRecording,
+    /// Records what the default output device plays (WASAPI loopback).
+    StartLoopbackRecording {
+        path: std::path::PathBuf,
+        max_secs: u32,
+    },
     /// Re-opens output/capture streams with a new routing configuration.
     SetDevices(EngineConfig),
     Shutdown,

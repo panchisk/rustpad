@@ -7,7 +7,7 @@ pub mod hotkey;
 pub mod model;
 pub mod spl;
 
-pub use config::{AppConfig, NormalizeMode, Theme, WindowState};
+pub use config::{AppConfig, NormalizeMode, RecordSource, Theme, WindowState};
 pub use hotkey::{Hotkey, Modifiers};
 pub use model::{
     default_category_icon, format_duration, parse_duration, synthetic_hash, today_iso, Category,

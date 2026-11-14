@@ -25,8 +25,9 @@
 //!   HotbarPage are preserved in the model's `extra` map (do not drop them).
 //! - Category `color` is uppercase `RRGGBB`. `type="1"` + `hidden="true"` maps to
 //!   [`CategoryKind::Hidden`]; plain categories to `Normal`.
-//! - Hotbar items are written as `<Sound id=".."/>` children of `<HotbarPage>` (the
-//!   format Soundpad uses); `<HotbarItem>` is accepted as a legacy alias.
+//! - Hotbar items are `<HotbarItem soundId=".." .../>` children of `<HotbarPage>`
+//!   (element and attribute names observed in Soundpad's literal pool); the older
+//!   `<Sound id=".."/>` form is accepted when reading.
 //! - Parsing must be tolerant: missing categories/hotbar, dangling sound ids, missing
 //!   `id` (use document order), malformed duration (0 ms) and unknown elements must not
 //!   fail the whole load. A missing `id` attribute on a `<Sound>` reference is an error
@@ -304,10 +305,10 @@ impl Soundlist {
             } else {
                 out.push_str(">\n");
                 for item in &page.items {
-                    // Written as `<Sound id>` so Soundpad itself can read the page;
-                    // the parser also accepts `<HotbarItem>` (older RustPad files).
-                    out.push_str("      <Sound");
-                    push_attr(&mut out, "id", &item.sound_id.to_string());
+                    // Soundpad's own element/attribute names (recovered from the
+                    // binary's UTF-16 literal pool): `<HotbarItem soundId="N">`.
+                    out.push_str("      <HotbarItem");
+                    push_attr(&mut out, "soundId", &item.sound_id.to_string());
                     if let Some(color) = item.color {
                         push_attr(&mut out, "color", &color.to_hex());
                     }
@@ -493,10 +494,10 @@ fn parse_hotbar_page(node: roxmltree::Node<'_, '_>, sounds: &[Sound]) -> HotbarP
         if tag != "HotbarItem" && tag != "Sound" {
             continue;
         }
-        // `soundId` is accepted as an alias of `id`.
+        // Soundpad writes `soundId`; `id` is accepted for older RustPad files.
         let Some(sound_id) = child
-            .attribute("id")
-            .or_else(|| child.attribute("soundId"))
+            .attribute("soundId")
+            .or_else(|| child.attribute("id"))
             .and_then(|v| v.trim().parse::<u32>().ok())
         else {
             continue;

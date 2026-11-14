@@ -7,6 +7,7 @@
 pub mod decode;
 pub mod dsp;
 pub mod engine;
+pub mod loopback;
 pub mod mixer;
 pub mod record;
 pub mod resample;

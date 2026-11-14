@@ -29,6 +29,16 @@ pub enum Theme {
     System,
 }
 
+/// What the recorder captures.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum RecordSource {
+    #[default]
+    Microphone,
+    /// "What you hear": WASAPI loopback of the default output device.
+    Speakers,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct WindowState {
@@ -126,11 +136,18 @@ pub struct AppConfig {
     pub distinguish_left_right_modifiers: bool,
     pub pass_hotkeys: bool,
     pub auto_keys_enabled: bool,
+    /// Virtual-key code held while a sound plays.
+    pub auto_keys_vk: u32,
+    /// Modifier bits (same layout as `hotkey::Modifiers`).
+    pub auto_keys_modifiers: u8,
+    /// Only simulate keys when the sound was started from a hotkey.
+    pub auto_keys_only_hotkey: bool,
     pub hotkeys: HashMap<String, Hotkey>,
 
     // Recorder / TTS
     pub recording_dir: PathBuf,
     pub recording_max_secs: u32,
+    pub record_source: RecordSource,
     pub trim_silence: bool,
     pub auto_normalize_recording: bool,
     pub tts_voice: Option<String>,
@@ -179,9 +196,13 @@ impl Default for AppConfig {
             distinguish_left_right_modifiers: false,
             pass_hotkeys: true,
             auto_keys_enabled: false,
+            auto_keys_vk: 0x56, // 'V' — the common push-to-talk key
+            auto_keys_modifiers: 0,
+            auto_keys_only_hotkey: false,
             hotkeys: HashMap::new(),
             recording_dir: default_recording_dir(),
             recording_max_secs: 300,
+            record_source: RecordSource::Microphone,
             trim_silence: true,
             auto_normalize_recording: true,
             tts_voice: None,
