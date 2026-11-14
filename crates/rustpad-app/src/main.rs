@@ -118,6 +118,15 @@ fn main() -> Result<()> {
         let _ = std::fs::remove_file(&path);
         return Ok(());
     }
+    if args.iter().any(|a| a == "--selftest-mic") {
+        let secs: u64 = args
+            .iter()
+            .position(|a| a == "--selftest-mic")
+            .and_then(|i| args.get(i + 1))
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(3);
+        return selftest_mic(secs);
+    }
     if args.iter().any(|a| a == "--selftest-audio") {
         return selftest_audio();
     }
@@ -185,6 +194,42 @@ fn main() -> Result<()> {
     } else {
         run_gui(args)
     }
+}
+
+fn selftest_mic(secs: u64) -> Result<()> {
+    use std::time::Duration;
+
+    let path = std::env::temp_dir().join("rustpad-selftest-mic.wav");
+    let handle = rustpad_audio::EngineHandle::spawn(rustpad_audio::types::EngineConfig::default());
+    handle.send(rustpad_audio::EngineCommand::StartRecording {
+        path: path.clone(),
+        max_secs: secs.min(30) as u32,
+    });
+    let deadline = std::time::Instant::now() + Duration::from_secs(secs + 2);
+    let mut finished = false;
+    while std::time::Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(100));
+        while let Some(ev) = handle.try_event() {
+            if matches!(ev, rustpad_audio::EngineEvent::RecordingFinished { .. }) {
+                finished = true;
+            }
+        }
+        if finished {
+            break;
+        }
+    }
+    handle.send(rustpad_audio::EngineCommand::StopRecording);
+    std::thread::sleep(Duration::from_millis(300));
+    handle.shutdown();
+    let audio = rustpad_audio::decode_file(&path)?;
+    println!(
+        "mic: {} ms, peak {:.1} dBFS, RMS {:.1} dBFS",
+        audio.duration_ms(),
+        rustpad_audio::dsp::peak_db(&audio.samples),
+        rustpad_audio::dsp::rms_db(&audio.samples)
+    );
+    let _ = std::fs::remove_file(&path);
+    Ok(())
 }
 
 fn selftest_audio() -> Result<()> {
