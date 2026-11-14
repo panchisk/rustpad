@@ -241,6 +241,7 @@ pub struct AppState {
     pub show_editor: bool,
     pub show_about: bool,
     pub show_hotkeys: bool,
+    pub show_mic_setup: bool,
     pub show_category_rename: Option<(usize, String)>,
 
     pub tts_text: String,
@@ -298,8 +299,6 @@ impl AppState {
         if let Some(path) = initial_list {
             cfg.soundlist_path = path;
         }
-        cfg.mic_passthrough = cfg.mic_passthrough_enabled_on_start;
-
         let mut list = Soundlist::load(&cfg.soundlist_path).unwrap_or_else(|err| {
             tracing::warn!("cannot load {}: {err:#}", cfg.soundlist_path.display());
             Soundlist::new()
@@ -311,11 +310,9 @@ impl AppState {
         cfg.output_device = pick_device(&cfg.output_device, &out_devices);
         cfg.capture_device = pick_device(&cfg.capture_device, &in_devices);
         // A virtual-cable device must be chosen explicitly; never default to speakers.
-        if let Some(name) = &cfg.mic_output_device {
-            if !out_devices.iter().any(|d| &d.name == name) {
-                cfg.mic_output_device = None;
-            }
-        }
+        // When a known cable is installed, select it automatically so microphone
+        // passthrough works out of the box (Soundpad uses its APO for this).
+        cfg.mic_output_device = pick_mic_output(&cfg.mic_output_device, &out_devices);
 
         let engine = EngineHandle::spawn(engine_config(&cfg));
 
@@ -386,6 +383,7 @@ impl AppState {
             show_editor: false,
             show_about: false,
             show_hotkeys: false,
+            show_mic_setup: false,
             show_category_rename: None,
             tts_text: String::new(),
             tts_voices,
@@ -1897,6 +1895,60 @@ impl AppState {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rustpad_audio::types::DeviceInfo;
+
+    fn device(name: &str, default: bool) -> DeviceInfo {
+        DeviceInfo {
+            name: name.to_string(),
+            is_default: default,
+            kind: rustpad_audio::types::DeviceKind::Output,
+            channels: 2,
+            sample_rate: 48_000,
+        }
+    }
+
+    #[test]
+    fn recognizes_common_virtual_cables() {
+        assert!(is_virtual_cable("CABLE Input (VB-Audio Virtual Cable)"));
+        assert!(is_virtual_cable(
+            "VoiceMeeter Input (VB-Audio VoiceMeeter VAIO)"
+        ));
+        assert!(is_virtual_cable("Virtual Audio Cable"));
+        assert!(!is_virtual_cable("Динамики (MCHOSE X9)"));
+        assert!(!is_virtual_cable("S23A950D (NVIDIA High Definition Audio)"));
+    }
+
+    #[test]
+    fn mic_output_auto_selects_a_cable_but_never_speakers() {
+        let speakers = vec![device("Динамики (MCHOSE X9)", true)];
+        assert_eq!(pick_mic_output(&None, &speakers), None);
+
+        let with_cable = vec![
+            device("Динамики (MCHOSE X9)", true),
+            device("CABLE Input (VB-Audio Virtual Cable)", false),
+        ];
+        assert_eq!(
+            pick_mic_output(&None, &with_cable).as_deref(),
+            Some("CABLE Input (VB-Audio Virtual Cable)")
+        );
+        // A valid explicit choice is kept even if another cable appears.
+        let current = Some("CABLE Input (VB-Audio Virtual Cable)".to_string());
+        assert_eq!(
+            pick_mic_output(&current, &with_cable).as_deref(),
+            Some("CABLE Input (VB-Audio Virtual Cable)")
+        );
+        // A stale choice is replaced by an installed cable.
+        let stale = Some("CABLE Input (removed)".to_string());
+        assert_eq!(
+            pick_mic_output(&stale, &with_cable).as_deref(),
+            Some("CABLE Input (VB-Audio Virtual Cable)")
+        );
+    }
+}
+
 impl eframe::App for AppState {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.tick(ctx);
@@ -1926,6 +1978,38 @@ fn engine_config(cfg: &AppConfig) -> EngineConfig {
     }
 }
 
+/// Names used by the common virtual cables that expose a render ("Input") endpoint.
+fn is_virtual_cable(name: &str) -> bool {
+    let name = name.to_lowercase();
+    [
+        "cable input",
+        "vb-audio",
+        "vb-cable",
+        "voicemeeter input",
+        "voicemeeter vaio",
+        "virtual audio cable",
+        "virtual cable",
+        "virtual mic",
+        "virtual microphone",
+    ]
+    .iter()
+    .any(|needle| name.contains(needle))
+}
+
+/// Keeps a valid microphone output, otherwise auto-selects a virtual cable and
+/// never falls back to speakers (that would create feedback).
+fn pick_mic_output(current: &Option<String>, devices: &[DeviceInfo]) -> Option<String> {
+    if let Some(name) = current {
+        if devices.iter().any(|d| &d.name == name) {
+            return Some(name.clone());
+        }
+    }
+    devices
+        .iter()
+        .find(|d| is_virtual_cable(&d.name))
+        .map(|d| d.name.clone())
+}
+
 fn pick_device(current: &Option<String>, devices: &[DeviceInfo]) -> Option<String> {
     if let Some(name) = current {
         if devices.iter().any(|d| &d.name == name) {
@@ -1942,11 +2026,7 @@ fn pick_device(current: &Option<String>, devices: &[DeviceInfo]) -> Option<Strin
 pub fn apply_engine_settings(state: &mut AppState) {
     state.cfg.output_device = pick_device(&state.cfg.output_device, &state.out_devices);
     state.cfg.capture_device = pick_device(&state.cfg.capture_device, &state.in_devices);
-    if let Some(name) = &state.cfg.mic_output_device {
-        if !state.out_devices.iter().any(|d| &d.name == name) {
-            state.cfg.mic_output_device = None;
-        }
-    }
+    state.cfg.mic_output_device = pick_mic_output(&state.cfg.mic_output_device, &state.out_devices);
     state
         .engine
         .send(EngineCommand::SetDevices(engine_config(&state.cfg)));

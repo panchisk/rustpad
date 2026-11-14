@@ -57,9 +57,11 @@ The *Delay* setting is applied to **microphone-targeted sounds**: `Mixer::play_d
 silence for the configured time before the first sample, which is what makes push-to-talk
 timing work. The voice path itself is not delayed.
 
-If no *Microphone output* is configured, microphone-targeted sounds are dropped (an error event
-is reported) and no microphone passthrough happens; nothing is routed to the speakers. This
-avoids leaking the soundboard into the wrong mix.
+RustPad auto-selects a known virtual cable (`CABLE Input`, `VoiceMeeter Input`, `Virtual Audio
+Cable`, …) as the microphone output at startup and after a device rescan, but never falls back to
+speakers. If no cable is installed, microphone passthrough has no destination: sounds still play
+on the speakers, and a banner/`How to set up` dialog explains that a cable is required (Soundpad
+does not need one because it uses a signed APO).
 
 ### Play generations and "stop previous"
 

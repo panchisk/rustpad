@@ -138,6 +138,8 @@ enum Act {
     NewHotbarPage,
     RemoveHotbarPage(usize),
     SaveConfig,
+    ShowMicSetup,
+    OpenUrl(&'static str),
     SetAutostart(bool),
     SetAlwaysOnTop(bool),
     PickRecordingDir,
@@ -170,6 +172,25 @@ pub fn draw(state: &mut AppState, ctx: &egui::Context) {
         .show(ctx, |ui| draw_menu(state, ui, &mut uis, &mut acts));
     egui::TopBottomPanel::top("rustpad-toolbar")
         .show(ctx, |ui| draw_toolbar(state, ui, &mut uis, &mut acts));
+    if state.cfg.mic_passthrough && state.cfg.mic_output_device.is_none() {
+        egui::TopBottomPanel::top("rustpad-mic-warning").show(ctx, |ui| {
+            ui.horizontal_wrapped(|ui| {
+                ui.colored_label(
+                    egui::Color32::from_rgb(240, 170, 60),
+                    state.tr(
+                        "Microphone passthrough needs a virtual cable: install VB-CABLE, then pick its input as \"Microphone output\".",
+                        "Для микрофона нужен виртуальный кабель: установите VB-CABLE и выберите его вход как «Устройство вывода для микрофона».",
+                    ),
+                );
+                if ui
+                    .button(state.tr("How to set up", "Как настроить"))
+                    .clicked()
+                {
+                    acts.push(Act::ShowMicSetup);
+                }
+            });
+        });
+    }
 
     if !uis.hotbar_collapsed {
         egui::TopBottomPanel::bottom("rustpad-hotbar")
@@ -202,6 +223,7 @@ pub fn draw(state: &mut AppState, ctx: &egui::Context) {
     draw_about_window(state, ctx);
     draw_rename_category(state, ctx);
     draw_hotkey_capture(state, ctx);
+    draw_mic_setup(state, ctx, &mut acts);
     draw_drop_overlay(state, ctx);
     draw_toasts(state, ctx);
 
@@ -1422,10 +1444,26 @@ fn settings_audio(state: &mut AppState, ui: &mut egui::Ui, acts: &mut Vec<Act>) 
         state.cfg.mic_output_device = mic_sel;
         acts.push(Act::ApplyEngine);
     }
-    ui.small(state.tr(
-        "Choose a virtual cable input (e.g. CABLE Input) so other apps hear the sounds.",
-        "Выберите вход виртуального кабеля (например, CABLE Input), чтобы звуки слышали другие программы.",
-    ));
+    if state.cfg.mic_output_device.is_none() {
+        ui.colored_label(
+            egui::Color32::from_rgb(240, 170, 60),
+            state.tr(
+                "No virtual cable selected: other apps cannot hear your microphone or the sounds.",
+                "Виртуальный кабель не выбран: другие программы не слышат ни микрофон, ни звуки.",
+            ),
+        );
+        if ui
+            .button(state.tr("How to set up", "Как настроить"))
+            .clicked()
+        {
+            acts.push(Act::ShowMicSetup);
+        }
+    } else {
+        ui.small(state.tr(
+            "Keep the cable's output selected as the microphone in Discord/OBS/game.",
+            "В Discord/OBS/игре выберите выход этого кабеля как микрофон.",
+        ));
+    }
 
     ui.add_space(6.0);
     ui.label(egui::RichText::new(state.tr("Capture device", "Устройство записи")).strong());
@@ -2907,6 +2945,62 @@ fn draw_hotkey_capture(state: &mut AppState, ctx: &egui::Context) {
 
 // ------------------------------------------------------------ toasts / DnD
 
+fn draw_mic_setup(state: &mut AppState, ctx: &egui::Context, acts: &mut Vec<Act>) {
+    if !state.show_mic_setup {
+        return;
+    }
+    let mut open = state.show_mic_setup;
+    let title = state.tr("Microphone setup", "Настройка микрофона");
+    egui::Window::new(title)
+        .open(&mut open)
+        .default_width(560.0)
+        .resizable(false)
+        .show(ctx, |ui| {
+            ui.label(state.tr(
+                "Soundpad mixes its sounds into the microphone with a signed audio driver. RustPad does the same in user mode, through a virtual cable:",
+                "Soundpad подмешивает звуки в микрофон через подписанный аудиодрайвер. RustPad делает то же самое в пользовательском режиме — через виртуальный кабель:",
+            ));
+            ui.add_space(4.0);
+            ui.label(state.tr(
+                "1. Install VB-CABLE (free) and reboot if the installer asks.",
+                "1. Установите VB-CABLE (бесплатно) и перезагрузитесь, если попросит установщик.",
+            ));
+            ui.label(state.tr(
+                "2. RustPad → Settings → Audio → Rescan devices; \"CABLE Input\" is selected automatically.",
+                "2. RustPad → Настройки → Аудио → Обновить устройства; «CABLE Input» выберется автоматически.",
+            ));
+            ui.label(state.tr(
+                "3. In Discord/OBS/game choose \"CABLE Output\" as the microphone.",
+                "3. В Discord/OBS/игре выберите «CABLE Output» как микрофон.",
+            ));
+            ui.label(state.tr(
+                "4. Keep \"Microphone passthrough\" enabled — your voice and the sounds are mixed together.",
+                "4. Оставьте «Проброс микрофона» включённым — голос и звуки будут микшироваться вместе.",
+            ));
+            ui.add_space(6.0);
+            ui.horizontal(|ui| {
+                if ui
+                    .button(state.tr("Open VB-CABLE website", "Открыть сайт VB-CABLE"))
+                    .clicked()
+                {
+                    acts.push(Act::OpenUrl("https://vb-audio.com/Cable/"));
+                }
+                if ui
+                    .button(state.tr("Rescan devices", "Обновить устройства"))
+                    .clicked()
+                {
+                    acts.push(Act::RescanDevices);
+                }
+            });
+            ui.add_space(4.0);
+            ui.small(state.tr(
+                "No cable installed? Then other apps can only hear you through your normal microphone; the soundboard itself still plays on the speakers.",
+                "Нет кабеля? Тогда другие программы слышат только ваш обычный микрофон; сама звуковая панель при этом играет в динамики.",
+            ));
+        });
+    state.show_mic_setup = open;
+}
+
 fn draw_toasts(state: &mut AppState, ctx: &egui::Context) {
     if state.toasts.is_empty() {
         return;
@@ -3116,11 +3210,21 @@ fn apply_actions(state: &mut AppState, ctx: &egui::Context, acts: Vec<Act>) {
                 let (out, inp) = rustpad_audio::EngineHandle::devices();
                 state.out_devices = out;
                 state.in_devices = inp;
+                let before = state.cfg.mic_output_device.clone();
                 app::apply_engine_settings(state);
-                state.toast(
-                    state.tr("Audio devices rescanned", "Список устройств обновлён"),
-                    false,
-                );
+                match (&before, &state.cfg.mic_output_device) {
+                    (_, Some(name)) if before.is_none() => state.toast(
+                        format!(
+                            "{}: {name}",
+                            state.tr("Microphone output selected", "Выбран вывод для микрофона")
+                        ),
+                        false,
+                    ),
+                    _ => state.toast(
+                        state.tr("Audio devices rescanned", "Список устройств обновлён"),
+                        false,
+                    ),
+                }
             }
             Act::PickFiles => {
                 if let Some(files) = rfd::FileDialog::new()
@@ -3136,6 +3240,12 @@ fn apply_actions(state: &mut AppState, ctx: &egui::Context, acts: Vec<Act>) {
                 }
             }
             Act::OpenList(path) => state.open_soundlist(path),
+            Act::ShowMicSetup => state.show_mic_setup = true,
+            Act::OpenUrl(url) => {
+                let _ = std::process::Command::new("cmd")
+                    .args(["/C", "start", "", url])
+                    .spawn();
+            }
             Act::SaveList => state.save_soundlist(),
             Act::SaveListAs => {
                 let path = rfd::FileDialog::new()

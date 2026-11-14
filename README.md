@@ -83,10 +83,20 @@ The binary is self-contained; no installer, no driver, no Steam.
    `%APPDATA%\Leppsoft\soundlist.spl` when present, otherwise
    `%USERPROFILE%\Documents\soundpad\soundlist.spl`, otherwise an empty list.
 2. **Settings → Audio**: pick your speakers as *Output device*.
-3. Install a virtual cable, then pick its input (e.g. `CABLE Input (VB-Audio Virtual Cable)`)
-   as *Microphone output* and your real microphone as *Capture device*.
+3. Install a virtual cable (VB-CABLE, VoiceMeeter, …). RustPad detects common cables and selects
+   their input (e.g. `CABLE Input`) as *Microphone output* automatically; your real microphone is
+   the *Capture device*. If no cable is found, a banner explains what is missing.
 4. In the voice app, select the cable's output (`CABLE Output`) as the microphone.
 5. Click a sound. Set hotkeys with right-click → **Set hotkey…**.
+
+### Microphone is silent in other apps
+
+Soundpad can mix audio into the real microphone because it installs a signed APO driver. RustPad
+does not install a driver; it mixes into a virtual cable instead. Without a cable, *Microphone
+passthrough* has nowhere to send your voice, so other apps hear only the physical microphone.
+Install VB-CABLE, press **Rescan devices** (RustPad selects `CABLE Input` itself), then select
+`CABLE Output` as the microphone in Discord/OBS/game. The banner at the top of the window opens
+step-by-step instructions and the download link.
 
 ## Remote control
 
@@ -115,7 +125,7 @@ Performed on this machine against real Soundpad data:
 
 | Check | Result |
 |---|---|
-| `cargo test --workspace` | **75 tests pass** (41 audio/DSP + loopback, 12 sound-list/stats, 15 remote-control, 7 Windows integration) |
+| `cargo test --workspace` | **77 tests pass** (41 audio/DSP + loopback, 12 sound-list/stats, 15 remote-control, 7 Windows integration, 2 microphone-routing) |
 | Parse `%APPDATA%\Leppsoft\soundlist.spl` | 158 sounds, 9 categories, 1 hotbar page |
 | Parse `%USERPROFILE%\Documents\soundpad\soundlist.spl` | 114 sounds, 11 categories, tags/colors preserved |
 | Decode WAV / MP3 (48 kHz stereo, 44.1 kHz mono) | correct duration, rate, channels, peak/RMS |
