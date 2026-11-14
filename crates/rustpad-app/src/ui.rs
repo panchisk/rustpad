@@ -1546,6 +1546,18 @@ fn settings_audio(state: &mut AppState, ui: &mut egui::Ui, acts: &mut Vec<Act>) 
 
     ui.separator();
 
+    let mut stop_prev = state.cfg.stop_previous_sound;
+    let stop_prev_label = state.tr(
+        "Stop the previous sound when a new one starts",
+        "Останавливать предыдущий звук при запуске нового",
+    );
+    if ui.checkbox(&mut stop_prev, stop_prev_label).changed() {
+        state.cfg.stop_previous_sound = stop_prev;
+        state.cfg_dirty();
+    }
+
+    ui.separator();
+
     let mut duck = state.cfg.duck_others;
     let duck_label = state.tr(
         "Reduce the volume of other applications while playing",

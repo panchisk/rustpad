@@ -28,6 +28,8 @@ struct Voice {
     start_frame: f64,
     end_frame: f64,
     stop_requested: bool,
+    /// Sound id from the play request (0 when unknown); used by `stop_sound`.
+    sound_id: u32,
     /// Output frames to emit as silence before the voice starts (mic PTT delay).
     delay_frames: u64,
 }
@@ -87,6 +89,19 @@ impl Mixer {
         start_ms: u64,
         delay_ms: u32,
     ) -> VoiceId {
+        self.play_tagged(0, data, gain, looping, start_ms, delay_ms)
+    }
+
+    /// Plays a sound tagged with its soundboard id (for `stop_sound`).
+    pub fn play_tagged(
+        &mut self,
+        sound_id: u32,
+        data: Arc<DecodedSound>,
+        gain: f32,
+        looping: bool,
+        start_ms: u64,
+        delay_ms: u32,
+    ) -> VoiceId {
         let stereo = if data.channels == 2 {
             data
         } else {
@@ -110,6 +125,7 @@ impl Mixer {
             start_frame,
             end_frame,
             stop_requested: false,
+            sound_id,
             delay_frames: (self.sample_rate as u64 * delay_ms as u64) / 1000,
         });
         self.last_started = Some(id);
@@ -118,6 +134,14 @@ impl Mixer {
 
     pub fn stop(&mut self, id: VoiceId) {
         if let Some(v) = self.voices.iter_mut().find(|v| v.id == id) {
+            v.stop_requested = true;
+            v.playing = true;
+        }
+    }
+
+    /// Stops only the voices started for `sound_id`.
+    pub fn stop_sound(&mut self, sound_id: u32) {
+        for v in self.voices.iter_mut().filter(|v| v.sound_id == sound_id) {
             v.stop_requested = true;
             v.playing = true;
         }
@@ -371,6 +395,18 @@ mod tests {
             out.iter().any(|s| s.abs() > 0.01),
             "audio starts after 50 ms"
         );
+    }
+
+    #[test]
+    fn stop_sound_leaves_other_voices_playing() {
+        let mut m = Mixer::new(48_000);
+        m.play_tagged(7, sine(48_000, 500, 440.0, 0.5), 1.0, false, 0, 0);
+        m.play_tagged(8, sine(48_000, 500, 660.0, 0.5), 1.0, false, 0, 0);
+        assert_eq!(m.voice_count(), 2);
+        m.stop_sound(7);
+        let mut out = vec![0f32; 480 * 2];
+        m.render(480, &mut out);
+        assert_eq!(m.voice_count(), 1);
     }
 
     #[test]

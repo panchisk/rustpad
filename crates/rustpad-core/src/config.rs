@@ -115,6 +115,8 @@ pub struct AppConfig {
     pub delay_mic_ms: u32,
     pub seek_step_secs: u32,
     pub block_voice_while_playing: bool,
+    /// Stop whatever is playing when a new sound starts (Soundpad's default).
+    pub stop_previous_sound: bool,
 
     // Hotkeys
     pub hotkeys_enabled: bool,
@@ -169,6 +171,7 @@ impl Default for AppConfig {
             delay_mic_ms: 0,
             seek_step_secs: 5,
             block_voice_while_playing: false,
+            stop_previous_sound: true,
             hotkeys_enabled: true,
             hotkey_index_modifier: "Ctrl".to_string(),
             hotkey_numcode_modifier: "Alt".to_string(),

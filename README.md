@@ -39,7 +39,9 @@ OBS, CS2, etc. Your voice and the soundboard are mixed together.
   follows Soundpad's rule (0-based document order), so lists stay readable by Soundpad after
   edits and deletions.
 - Audio: WAV / MP3 / FLAC / OGG-Vorbis / AAC (M4A) decoding, on-the-fly resampling, polyphonic
-  mixing, per-sound and master volume, pause/resume, seek, next/previous/random.
+  mixing, per-sound and master volume, pause/resume, seek, next/previous/random. Starting a new
+  sound stops the previous one by default (switchable in *Settings → Audio* for overlapping
+  playback); pending decodes of older requests are discarded so a slow file cannot start late.
 - Routing: speakers, microphone (virtual cable), or both; microphone passthrough with gain;
   optional playback delay for microphone-target sounds; optional voice block while a sound
   plays.

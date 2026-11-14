@@ -61,6 +61,14 @@ If no *Microphone output* is configured, microphone-targeted sounds are dropped 
 is reported) and no microphone passthrough happens; nothing is routed to the speakers. This
 avoids leaking the soundboard into the wrong mix.
 
+### Play generations and "stop previous"
+
+When *Stop previous sound* is enabled (default), the app sends `StopAll` immediately before
+`Play`. Because file decoding runs on worker threads, every `Play` and `StopAll` also bumps an
+engine generation; a decode that finishes for an older generation is dropped instead of
+starting mid-way through the new sound. `StopSound(id)` stops only the voices tagged with that
+sound id, so push-to-talk release cannot silence overlapping sounds.
+
 ### Threading and real-time safety
 
 - The audio callbacks lock one `Mixer`/`MicBus` mutex and render into a scratch Vec; the mixer

@@ -109,6 +109,13 @@ pub enum EngineCommand {
         request: PlayRequest,
         audio: std::sync::Arc<DecodedSound>,
     },
+    /// Internal: a worker-decoded sound tagged with the play generation it was
+    /// requested under. Stale generations are dropped (see `Engine`).
+    PlayDecodedAt {
+        request: PlayRequest,
+        audio: std::sync::Arc<DecodedSound>,
+        generation: u64,
+    },
     StopAll,
     StopSound(u32),
     TogglePause,

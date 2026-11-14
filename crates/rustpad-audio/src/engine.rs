@@ -296,6 +296,9 @@ struct Engine {
 
     last_sound: Option<u32>,
     last_voice: Option<crate::mixer::VoiceId>,
+    /// Bumped by every Play and StopAll; worker decodes from older generations
+    /// must not start after a newer request or a stop.
+    generation: u64,
     paused: bool,
 }
 
@@ -323,6 +326,7 @@ impl Engine {
             capture: None,
             last_sound: None,
             last_voice: None,
+            generation: 0,
             paused: false,
             config,
             speakers: None,
@@ -471,7 +475,8 @@ impl Engine {
                 } else {
                     0
                 };
-                last_voice = Some(m.play_delayed(
+                last_voice = Some(m.play_tagged(
+                    request.sound_id,
                     audio.clone(),
                     request.gain,
                     request.looping,
@@ -511,6 +516,8 @@ impl Engine {
     fn handle(&mut self, cmd: EngineCommand) {
         match cmd {
             EngineCommand::Play(req) => {
+                self.generation = self.generation.wrapping_add(1);
+                let generation = self.generation;
                 let source = req.source.clone();
                 if let PlaySource::Decoded(audio) = &source {
                     self.start_playback(req, audio.clone());
@@ -522,9 +529,10 @@ impl Engine {
                     let cmd_tx = self.cmd_tx.clone();
                     std::thread::spawn(move || match decode_file(&path) {
                         Ok(audio) => {
-                            let _ = cmd_tx.send(EngineCommand::PlayDecoded {
+                            let _ = cmd_tx.send(EngineCommand::PlayDecodedAt {
                                 request: req,
                                 audio: Arc::new(audio),
+                                generation,
                             });
                         }
                         Err(err) => {
@@ -535,9 +543,21 @@ impl Engine {
                 }
             }
             EngineCommand::PlayDecoded { request, audio } => {
+                self.generation = self.generation.wrapping_add(1);
                 self.start_playback(request, audio);
             }
+            EngineCommand::PlayDecodedAt {
+                request,
+                audio,
+                generation,
+            } => {
+                if generation == self.generation {
+                    self.start_playback(request, audio);
+                }
+            }
             EngineCommand::StopAll => {
+                // Invalidate decodes that are still running in worker threads.
+                self.generation = self.generation.wrapping_add(1);
                 for out in [self.speakers.as_ref(), self.mic_output.as_ref()]
                     .into_iter()
                     .flatten()
@@ -547,8 +567,11 @@ impl Engine {
                 self.paused = false;
             }
             EngineCommand::StopSound(id) => {
-                if self.last_sound == Some(id) {
-                    self.handle(EngineCommand::StopAll);
+                for out in [self.speakers.as_ref(), self.mic_output.as_ref()]
+                    .into_iter()
+                    .flatten()
+                {
+                    out.mixer.lock().stop_sound(id);
                 }
             }
             EngineCommand::TogglePause => {

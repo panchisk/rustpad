@@ -507,6 +507,10 @@ impl AppState {
             self.toast(format!("File not found: {}", sound.path.display()), true);
             return;
         }
+        if self.cfg.stop_previous_sound {
+            self.engine.send(EngineCommand::StopAll);
+            self.current_sound = None;
+        }
         let gain = self.sound_gain(&sound);
         let req = PlayRequest {
             sound_id: id,
