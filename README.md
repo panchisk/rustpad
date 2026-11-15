@@ -1,159 +1,138 @@
-# RustPad
+<p align="center">
+  <img src="docs/assets/banner.svg" alt="RustPad — a Windows soundboard written in Rust" width="100%">
+</p>
 
-A Rust soundboard for Windows that loads **Soundpad 4.x sound lists** (`.spl`), speaks the
-**Soundpad remote-control protocol**, and plays sounds into your **speakers and microphone**
-without a kernel driver.
+RustPad is a soundboard for Windows, written in Rust. It reads Soundpad 4.x `.spl` lists,
+plays common audio formats, and sends the mix to your speakers or to a virtual microphone
+cable for Discord, OBS and games.
 
-Built after a full reverse-engineering pass of `Soundpad.exe 4.0.35` (Leppsoft) — see
-`docs/EVIDENCE.md` for the observed architecture, formats, protocols and the honest list of
-unknowns.
+It is a native desktop application. No Electron, no installer, no kernel driver, no Steam.
 
-![status](https://img.shields.io/badge/status-alpha-orange)
+[Build](#build) · [Screenshots](#screenshots) · [Microphone routing](#microphone-routing) · [Remote control](#remote-control)
 
-## Why a virtual cable instead of a driver
+## Status
 
-Soundpad injects audio into every application's microphone through **UniteFx**, a signed
-Audio Processing Object (`C:\Windows\System32\UniteFx1.8.0.dll`, CLSID
-`{27384E53-9860-0AC3-9519-C60EBCAA2C71}`) registered as an SFX on the capture endpoint.
-Windows requires WHQL signing for such an APO, which a hobby project cannot obtain.
+Windows 10/11, x86_64 MSVC. The project is usable but still alpha; the sound list and audio
+engine are covered by **83 tests**, the UI is checked manually.
 
-RustPad does the same job in user mode:
+## Screenshots
 
-```
-real microphone ──► capture ──┐
-                              ├──► mixer ──► "CABLE Input" (virtual device)
-sounds flagged "microphone" ──┘                     │
-                                                    ▼
-                                   apps select "CABLE Output" as microphone
-sounds flagged "speakers" ──────► mixer ──► speakers
-```
+![RustPad main window](docs/assets/rustpad-main.png)
 
-Install any virtual audio cable once (VB-CABLE, VoiceMeeter, SteelSeries Sonar, …), select its
-**input** as *Microphone output* in RustPad, and its **output** as the microphone in Discord,
-OBS, CS2, etc. Your voice and the soundboard are mixed together.
+The main view: category sidebar, sortable sound table, transport, output and microphone
+meters, hotbar pages and the current microphone route.
 
-## Features
+## What works
 
-- Sound list compatible with Soundpad: sounds, categories, icons, colors, `customTag` tags,
-  hotbar pages, `.spl` reading/writing, `stats.spl` play counts, daily backups. Sound identity
-  follows Soundpad's rule (0-based document order), so lists stay readable by Soundpad after
-  edits and deletions. The file `hash` is Soundpad's real volume-serial + NTFS file-id tuple,
-  so imported and newly added sounds share play counts with Soundpad.
-- Audio: WAV / MP3 / FLAC / OGG-Vorbis / AAC (M4A) decoding, on-the-fly resampling, polyphonic
-  mixing, per-sound and master volume, pause/resume, seek, next/previous/random. Starting a new
-  sound stops the previous one by default (switchable in *Settings → Audio* for overlapping
-  playback); pending decodes of older requests are discarded so a slow file cannot start late.
-- Routing: speakers, microphone (virtual cable), or both; microphone passthrough with gain;
-  optional playback delay for microphone-target sounds; optional voice block while a sound
-  plays.
-- Global hotkeys: per-sound keys, modifier-only push-to-talk, index hotkeys (`Ctrl+1..0`),
-  numpad hotkeys, hotkey enable/disable toggle, hotkey overview.
-- Auto Keys: holds a configurable key + modifiers with `SendInput` while a sound plays
-  (simulated push-to-talk), optionally only for hotkey-triggered playback.
-- Hotbar: pages, 6-column grid, per-cell colors and hotkeys.
-- Loudness: off / fixed dB adjustment / dynamic per-sound normalisation to a target level.
-- Recorder: microphone **or** system output (WASAPI loopback, "what you hear") to WAV with
-  silence trimming and peak normalisation.
-- Text-to-speech: Windows SAPI voices, rate/pitch, play on speakers/mic/both.
-- Sound editor: waveform, selection, crop, fades, reverse, normalise, trim silence, karaoke,
-  speed, boost, save as WAV / add to list.
-- Remote control: named pipe `\\.\pipe\sp_remote_control`, Soundpad command names and
-  response framing (payload lines + `R<code>`), plus `rustpad -rc "DoPlaySound(1)"` on the
-  command line.
-- Windows integration: single instance, autostart, dark/light theme, Russian/English UI,
-  Windows "duck other sounds" preference, drag & drop, file dialogs, open another `.spl`
-  (`Ctrl+O` or `rustpad --list file.spl`).
+- **Sound lists.** Reads and writes Soundpad `.spl` files, including categories, icons,
+  colors, custom tags, hotbar pages and `stats.spl` play counts. Unknown attributes are kept.
+  Sound identity follows Soundpad's document-order rule, and the file hash uses the real
+  volume-serial + NTFS file-id tuple, so play counts survive edits.
+- **Audio.** WAV, MP3, FLAC, OGG-Vorbis and AAC/M4A through symphonia; runtime resampling,
+  polyphonic mixing, seek, pause, previous/next/random, master and per-target volume.
+  Starting a new sound stops the previous one by default; overlapping playback is a setting.
+- **Routing.** Speakers, microphone cable, or both. Microphone passthrough with gain and
+  optional delay; the voice is mixed with sounds by default and can be muted during playback
+  if you prefer.
+- **Hotkeys.** Per-sound keys, push-to-talk modifiers, `Ctrl+1..0` index keys, numpad keys,
+  hotkey capture and an overview window. Hotkeys are observed, never swallowed.
+- **Auto Keys.** Holds a configured key and modifiers with `SendInput` while a sound plays,
+  optionally only for hotkey-triggered playback.
+- **Hotbar.** Pages, six-column grid, per-cell colors and hotkeys.
+- **Extras.** Recorder (microphone or WASAPI loopback), waveform editor, SAPI text-to-speech,
+  loudness normalization, drag and drop, English/Russian UI, light and dark themes.
+- **Remote control.** The Soundpad named pipe, command names and response framing, plus a
+  command-line client.
+
+## Microphone routing
+
+Windows does not let a normal application inject audio into another application's microphone.
+Soundpad solves this with a signed APO driver. RustPad uses a virtual cable instead, which
+needs no driver signing.
+
+![Microphone routing](docs/assets/mic-routing.svg)
+
+1. Install [VB-CABLE](https://vb-audio.com/Cable/) once. RustPad can download and start the
+   installer from the microphone setup window.
+2. In RustPad, set **Microphone output** to `CABLE Input (VB-Audio Virtual Cable)`. A physical
+   microphone is selected as the capture device automatically; the app never defaults the
+   capture side to a virtual cable.
+3. In Discord, OBS or the game, select `CABLE Output (VB-Audio Virtual Cable)` as the
+   microphone.
+4. Disable noise suppression, echo cancellation and automatic gain control for that input.
+   They tend to gate a quiet USB microphone.
+
+The microphone and the soundboard are now mixed into the same virtual microphone. The footer
+in RustPad shows the selected cable; the `MIC` indicator in the top bar follows the capture
+level.
 
 ## Build
 
-Requirements: Rust 1.80+ with the MSVC toolchain (`x86_64-pc-windows-msvc`), Windows 10/11.
+Requirements:
+
+- Windows 10 or 11
+- Rust 1.80+ with the `x86_64-pc-windows-msvc` toolchain
+- Visual Studio Build Tools with the C++ workload
 
 ```powershell
-cd C:\Users\admin\Documents\rustpad
+git clone https://github.com/panchisk/rustpad.git
+cd rustpad
 cargo test --workspace
 cargo build --release
-target\release\rustpad.exe
+.\target\release\rustpad.exe
 ```
 
-The binary is self-contained; no installer, no driver, no Steam.
-
-## Quick start
-
-1. Start RustPad. It opens your existing Soundpad list from
-   `%APPDATA%\Leppsoft\soundlist.spl` when present, otherwise
-   `%USERPROFILE%\Documents\soundpad\soundlist.spl`, otherwise an empty list.
-2. **Settings → Audio**: pick your speakers as *Output device*.
-3. Install a virtual cable (VB-CABLE, VoiceMeeter, …). RustPad detects common cables and selects
-   their input (e.g. `CABLE Input`) as *Microphone output* automatically; your real microphone is
-   the *Capture device*. If no cable is found, a banner explains what is missing.
-4. In the voice app, select the cable's output (`CABLE Output`) as the microphone.
-5. Click a sound. Set hotkeys with right-click → **Set hotkey…**.
-
-### Microphone is silent in other apps
-
-Soundpad can mix audio into the real microphone because it installs a signed APO driver. RustPad
-does not install a driver; it mixes into a virtual cable instead. Without a cable, *Microphone
-passthrough* has nowhere to send your voice, so other apps hear only the physical microphone.
-Install VB-CABLE, press **Rescan devices** (RustPad selects `CABLE Input` itself), then select
-`CABLE Output` as the microphone in Discord/OBS/game. The banner at the top of the window opens
-step-by-step instructions and the download link.
+The result is a single executable. Settings live in `%APPDATA%\RustPad\config.json`.
 
 ## Remote control
 
-Same pipe name and command names as Soundpad ([OBS] in the binary):
+RustPad serves the same named pipe as Soundpad:
 
-```powershell
-rustpad -rc "DoPlaySound(1)"
-rustpad -rc "DoPlaySoundFromCategory(2,1,true,false)"
-rustpad -rc "GetSoundFileCount()"
+```text
+\\.\pipe\sp_remote_control
 ```
 
-Supported: `DoPlaySound`, `DoPlaySoundFromCategory`, `DoPlayRandomSound`,
+Commands can be sent through the pipe, or with the command-line client:
+
+```powershell
+rustpad.exe -rc "DoPlaySound(1)"
+rustpad.exe -rc "DoPlaySoundFromCategory(2,1,true,false)"
+rustpad.exe -rc "GetSoundFileCount()"
+```
+
+Supported commands include `DoPlaySound`, `DoPlaySoundFromCategory`, `DoPlayRandomSound`,
 `DoPlayRandomSoundFromCategory`, `DoPlayPreviousSound`, `DoPlayNextSound`,
 `DoPlaySelectedSound`, `DoPlayCurrentSoundAgain`, `DoPlayPreviouslyPlayedSound`,
-`PauseResume`, `Stop`, `DoAddSound(path)`, `DoRemoveSelectedEntries`, `DoRemoveCategory`,
-`DoSaveSoundlist`, `GetSoundFileCount`, `GetSoundlist`, `GetVersion`,
+`PauseResume`, `Stop`, `DoAddSound`, `DoRemoveSelectedEntries`, `DoRemoveCategory`,
+`DoSaveSoundlist`, `GetSoundFileCount`, `GetSoundlist`, `GetVersion` and
 `GetRemoteControlVersion`.
 
-Response framing matches Soundpad (confirmed from its UTF-16 literals): optional payload
-line(s), then `R<code>` — `R0` for success, `R-204` for a malformed call and `R-404` for an
-unknown command. Error codes `R-200/-400/-403/-409/-500` are defined in `docs/EVIDENCE.md`.
+Responses use Soundpad's framing: optional payload lines followed by `R0` on success,
+`R-204` for a malformed call, `R-404` for an unknown command.
 
-## Verification
+## Project layout
 
-Performed on this machine against real Soundpad data:
+![Workspace layout](docs/assets/architecture.svg)
 
-| Check | Result |
+| Crate | Contents |
 |---|---|
-| `cargo test --workspace` | **77 tests pass** (41 audio/DSP + loopback, 12 sound-list/stats, 15 remote-control, 7 Windows integration, 2 microphone-routing) |
-| Parse `%APPDATA%\Leppsoft\soundlist.spl` | 158 sounds, 9 categories, 1 hotbar page |
-| Parse `%USERPROFILE%\Documents\soundpad\soundlist.spl` | 114 sounds, 11 categories, tags/colors preserved |
-| Decode WAV / MP3 (48 kHz stereo, 44.1 kHz mono) | correct duration, rate, channels, peak/RMS |
-| Round-trip `.spl` | 158/114 sounds, same categories/attributes; unknown attributes preserved |
-| Remote control | `GetVersion()` → `0.1.0`, `GetSoundFileCount()` → 158/114, `DoPlaySoundFromCategory(...)` starts playback, `Stop()` stops |
-| Audio engine | tone playback with position/level metering, microphone and 1 s loopback recordings to WAV |
-| Auto Keys | app held F13 during playback and released it after (`GetAsyncKeyState`); the global hook receives injected Ctrl+Alt+F1 |
-| Soundpad hash | computed hash equals the live list's `hash` for existing files |
-| Remote framing | payload + `R0`; malformed calls `R-204`, unknown commands `R-404` |
-| TTS | SAPI voice enumeration + WAV synthesis (RIFF/PCM/mono/22050 Hz/16-bit) |
-| GUI | main window, settings (6 tabs), TTS, editor, hotkeys overview and hotbar rendered and exercised |
-
-There is no automated GUI test; UI checks were manual screenshots during development.
+| `rustpad-core` | `.spl` model and parser, categories, hashes, stats, config, hotkey types |
+| `rustpad-audio` | cpal/WASAPI streams, decoding, resampling, mixer, microphone bus, loopback |
+| `rustpad-platform` | global hotkeys, remote-control pipe, TTS, autostart, VB-CABLE detection |
+| `rustpad-app` | egui shell, sound table, hotbar, settings, editor, recorder |
 
 ## Compatibility notes
 
-- `.spl` files are read and written with the observed Soundpad schema. Unknown attributes are
-  preserved. Hotbar items use Soundpad's own element/attribute names (`<HotbarItem soundId=…>`,
-  recovered from the binary's literal pool); `altCode` is preserved but not interpreted.
-- File hashes are Soundpad's real volume-serial + NTFS file-id tuple, so imported and newly
-  added sounds share the same `stats.spl` play counts.
-- There is no DRM, licensing or Steam integration: every feature works without Soundpad.
-- Microphone-target sounds are delayed by *Settings → Audio → Delay*; microphone passthrough
-  itself is not delayed. Hotkeys are observed, never swallowed (`CallNextHookEx` always runs),
-  so a bound key still reaches the focused application.
-- Loopback recording captures the default output device mix, not individual applications.
-  Opus decoding remains disabled; WAV/MP3/FLAC/OGG-Vorbis/AAC are supported.
+- `.spl` files are read and written with the observed Soundpad schema; unknown attributes are
+  preserved. `altCode` is preserved but not interpreted.
+- Opus decoding is disabled. WAV, MP3, FLAC, OGG-Vorbis and AAC are supported.
+- Loopback recording captures the default output mix, not individual applications.
+- Microphone injection requires a virtual cable. Without one, other applications hear only
+  the physical microphone.
+- There is no DRM or licensing integration. Every feature works without Soundpad installed.
 
-## Licence
+## License
 
-MIT. Soundpad is © Leppsoft; this project contains no Leppsoft code or assets.
+MIT. See [LICENSE](LICENSE).
+
+Soundpad is a product of Leppsoft. This project contains no Leppsoft code or assets.
