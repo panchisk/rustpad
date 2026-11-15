@@ -13,6 +13,7 @@ pub mod pipe;
 pub mod single_instance;
 pub mod soundpad_import;
 pub mod tts;
+pub mod vbcable;
 
 pub use fileid::soundpad_hash;
 pub use hotkeys::{KeyEvent, KeyboardHook};

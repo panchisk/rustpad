@@ -25,6 +25,19 @@ use rustpad_platform::hotkeys::{KeyEvent, KeyboardHook};
 use rustpad_platform::pipe::{PipeServer, RemoteCommand, RemoteReply};
 use rustpad_platform::single_instance::InstanceGuard;
 use rustpad_platform::tts::TtsVoice;
+use rustpad_platform::vbcable::InstallOutcome;
+#[cfg(windows)]
+use windows::Win32::Foundation::{BOOL, HWND, LPARAM};
+#[cfg(windows)]
+use windows::Win32::Graphics::Dwm::{
+    DwmSetWindowAttribute, DWMWA_CAPTION_COLOR, DWMWA_USE_IMMERSIVE_DARK_MODE,
+};
+#[cfg(windows)]
+use windows::Win32::System::Threading::GetCurrentProcessId;
+#[cfg(windows)]
+use windows::Win32::UI::WindowsAndMessaging::{
+    EnumWindows, GetWindowTextW, GetWindowThreadProcessId,
+};
 
 const STATS_SAVE_INTERVAL: Duration = Duration::from_secs(20);
 
@@ -268,6 +281,10 @@ pub struct AppState {
     import_rx: Receiver<ImportResult>,
     tts_rx: Receiver<(PathBuf, anyhow::Result<()>)>,
     tts_tx: Sender<(PathBuf, anyhow::Result<()>)>,
+    /// Background VB-CABLE installer, if one is running.
+    pub cable_install: Option<Receiver<InstallOutcome>>,
+    /// Whether the native caption has been recoloured for this window.
+    styled_window: bool,
 
     hook: Option<KeyboardHook>,
     pressed: HashSet<u32>,
@@ -405,6 +422,8 @@ impl AppState {
             import_rx,
             tts_rx,
             tts_tx,
+            cable_install: None,
+            styled_window: false,
             hook,
             pressed: HashSet::new(),
             mic_hold: None,
@@ -1733,7 +1752,58 @@ impl AppState {
 
     // ------------------------------------------------------------------ tick
 
+    fn handle_cable_install(&mut self, outcome: InstallOutcome) {
+        match outcome {
+            InstallOutcome::AlreadyInstalled => {
+                self.toast(
+                    self.tr(
+                        "VB-CABLE is already installed. Rescanning audio devices…",
+                        "VB-CABLE уже установлен. Обновляю список устройств…",
+                    ),
+                    false,
+                );
+                let (out, inp) = rustpad_audio::EngineHandle::devices();
+                self.out_devices = out;
+                self.in_devices = inp;
+                crate::app::apply_engine_settings(self);
+            }
+            InstallOutcome::NeedsReboot | InstallOutcome::Installed => {
+                self.toast(
+                    self.tr(
+                        "VB-CABLE installed. Restart Windows, then RustPad will select “CABLE Input” automatically.",
+                        "VB-CABLE установлен. Перезагрузите Windows — RustPad сам выберет «CABLE Input».",
+                    ),
+                    false,
+                );
+            }
+            InstallOutcome::Cancelled => {
+                self.toast(
+                    self.tr("Installation was cancelled.", "Установка отменена."),
+                    false,
+                );
+            }
+            InstallOutcome::Failed(err) => {
+                self.toast(
+                    format!(
+                        "{}: {err}",
+                        self.tr(
+                            "Could not install VB-CABLE",
+                            "Не удалось установить VB-CABLE"
+                        )
+                    ),
+                    true,
+                );
+            }
+        }
+    }
+
     pub fn tick(&mut self, ctx: &egui::Context) {
+        if !self.styled_window {
+            self.styled_window = style_native_window();
+            if !self.styled_window {
+                ctx.request_repaint_after(Duration::from_millis(120));
+            }
+        }
         self.status = self.engine.status();
         self.mic_level = self.engine.mic_level();
         self.out_level = self.engine.output_level();
@@ -1793,6 +1863,25 @@ impl AppState {
                 let duration = result.duration_ms.unwrap_or(0);
                 self.add_sound_now(result.path, duration, result.loudness_db, result.hash);
             }
+        }
+
+        // VB-CABLE installer runs on a background thread; UI stays responsive.
+        let mut cable_done = None;
+        if let Some(rx) = &self.cable_install {
+            match rx.try_recv() {
+                Ok(outcome) => cable_done = Some(outcome),
+                Err(crossbeam_channel::TryRecvError::Empty) => {}
+                Err(crossbeam_channel::TryRecvError::Disconnected) => {
+                    cable_done = Some(InstallOutcome::Failed(
+                        "installer thread stopped unexpectedly".to_string(),
+                    ));
+                }
+            }
+        }
+        if let Some(outcome) = cable_done {
+            self.cable_install = None;
+            self.handle_cable_install(outcome);
+            ctx.request_repaint();
         }
 
         while let Ok((path, result)) = self.tts_rx.try_recv() {
@@ -1961,6 +2050,67 @@ impl eframe::App for AppState {
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
         self.shutdown();
     }
+}
+
+#[cfg(windows)]
+unsafe extern "system" fn find_own_window(hwnd: HWND, lparam: LPARAM) -> BOOL {
+    let mut pid = 0u32;
+    let _ = GetWindowThreadProcessId(hwnd, Some(&mut pid));
+    if pid == GetCurrentProcessId() {
+        let mut buf = [0u16; 128];
+        let len = GetWindowTextW(hwnd, &mut buf);
+        if len > 0 {
+            let title = String::from_utf16_lossy(&buf[..len as usize]);
+            if title.contains("RustPad") {
+                *(lparam.0 as *mut HWND) = hwnd;
+                return BOOL(0);
+            }
+        }
+    }
+    BOOL(1)
+}
+
+/// Paints the native caption pure black so the OS chrome matches the app.
+/// Returns false while the window does not exist yet; the caller retries.
+#[cfg(windows)]
+fn style_native_window() -> bool {
+    unsafe {
+        let mut hwnd = HWND::default();
+        let _ = EnumWindows(
+            Some(find_own_window),
+            LPARAM(&mut hwnd as *mut HWND as isize),
+        );
+        if hwnd.is_invalid() {
+            return false;
+        }
+        let dark: i32 = 1;
+        let _ = DwmSetWindowAttribute(
+            hwnd,
+            DWMWA_USE_IMMERSIVE_DARK_MODE,
+            &dark as *const _ as *const core::ffi::c_void,
+            std::mem::size_of::<i32>() as u32,
+        );
+        let black: u32 = 0x0000_0000;
+        let _ = DwmSetWindowAttribute(
+            hwnd,
+            DWMWA_CAPTION_COLOR,
+            &black as *const _ as *const core::ffi::c_void,
+            std::mem::size_of::<u32>() as u32,
+        );
+        let text: u32 = 0x00F6_F6F8;
+        let _ = DwmSetWindowAttribute(
+            hwnd,
+            windows::Win32::Graphics::Dwm::DWMWA_TEXT_COLOR,
+            &text as *const _ as *const core::ffi::c_void,
+            std::mem::size_of::<u32>() as u32,
+        );
+        true
+    }
+}
+
+#[cfg(not(windows))]
+fn style_native_window() -> bool {
+    true
 }
 
 fn engine_config(cfg: &AppConfig) -> EngineConfig {
