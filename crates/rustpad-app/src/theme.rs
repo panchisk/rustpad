@@ -232,7 +232,7 @@ fn custom_dark() -> egui::Visuals {
     v.faint_bg_color = egui::Color32::from_rgb(9, 9, 12);
     v.code_bg_color = egui::Color32::from_rgb(14, 14, 18);
     v.selection.bg_fill = accent_tint(58);
-    v.selection.stroke = egui::Stroke::NONE;
+    v.selection.stroke = egui::Stroke::new(1.0_f32, TEXT);
     v.hyperlink_color = ACCENT;
     v.warn_fg_color = AMBER;
     v.error_fg_color = RED;

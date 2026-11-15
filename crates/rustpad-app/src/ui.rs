@@ -625,17 +625,18 @@ enum TransportIcon {
 
 fn halo(
     painter: &egui::Painter,
-    rect: egui::Rect,
-    base_radius: f32,
+    center: egui::Pos2,
+    radius: f32,
     color: egui::Color32,
     strength: f32,
 ) {
-    let a = (strength.clamp(0.0, 1.0) * 20.0) as u8;
-    for (spread, f) in [(14.0f32, 0.22f32), (9.0, 0.42), (5.0, 0.7)] {
-        painter.rect_filled(
-            rect.expand(spread),
-            egui::Rounding::same(base_radius + spread),
-            tint(color, (a as f32 * f) as u8),
+    for i in 0..10 {
+        let t = i as f32 / 9.0;
+        let a = ((1.0 - t).powi(2) * strength.clamp(0.0, 1.0) * 34.0) as u8;
+        painter.circle_stroke(
+            center,
+            radius + 1.5 + t * 10.0,
+            egui::Stroke::new(1.8_f32, tint(color, a)),
         );
     }
 }
@@ -660,7 +661,7 @@ fn transport_button(
             let pulse = (t * 3.2).sin() * 0.5 + 0.5;
             halo(
                 ui.painter(),
-                rect,
+                rect.center(),
                 size / 2.0,
                 theme::ACCENT,
                 0.55 + pulse * 0.45,
