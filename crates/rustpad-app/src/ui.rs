@@ -2127,7 +2127,8 @@ fn meter(ui: &mut egui::Ui, level: f32, label: &str) {
     );
     ui.painter()
         .rect_filled(track, egui::Rounding::same(2.0), theme::white(18));
-    let v = level.clamp(0.0, 1.0);
+    let db = 20.0 * level.max(1e-6).log10();
+    let v = ((db + 60.0) / 60.0).clamp(0.0, 1.0);
     let color = if v > 0.97 {
         theme::RED
     } else if v > 0.85 {

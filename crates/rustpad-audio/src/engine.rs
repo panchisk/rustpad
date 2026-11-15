@@ -223,6 +223,7 @@ struct MicBus {
     ring: VecDeque<f32>,
     capacity: usize,
     enabled: bool,
+    block_voice: bool,
     gain: f32,
     delay_frames: usize,
 }
@@ -234,6 +235,7 @@ impl MicBus {
             ring: VecDeque::with_capacity(capacity),
             capacity,
             enabled: false,
+            block_voice: false,
             gain: 1.0,
             delay_frames: 0,
         };
@@ -260,7 +262,7 @@ impl MicBus {
     }
 
     fn add_to(&mut self, out: &mut [f32], frames: usize, block: bool) {
-        if !self.enabled || block {
+        if !self.enabled || (block && self.block_voice) {
             // Keep the ring in sync with real time: discard instead of letting
             // stale audio accumulate while passthrough is off.
             for _ in 0..frames * 2 {
@@ -449,6 +451,7 @@ impl Engine {
             }
         }
         bus.enabled = self.config.mic_passthrough;
+        bus.block_voice = self.config.block_voice;
         bus.gain = self.config.mic_passthrough_gain;
     }
 
@@ -644,6 +647,7 @@ impl Engine {
             }
             EngineCommand::SetBlockVoice(v) => {
                 self.config.block_voice = v;
+                self.mic_bus.lock().block_voice = v;
             }
             EngineCommand::StartRecording { path, max_secs } => {
                 if self.loopback.is_some() {
@@ -1038,4 +1042,33 @@ fn build_input(
     };
     stream.play().context("starting input stream")?;
     Ok(stream)
+}
+
+#[cfg(test)]
+mod mic_bus_tests {
+    use super::MicBus;
+
+    #[test]
+    fn microphone_keeps_flowing_while_a_sound_plays_by_default() {
+        let mut bus = MicBus::new(48_000, 0);
+        bus.enabled = true;
+        bus.push_mono(&[0.5; 480]);
+        let mut out = vec![0.0; 960];
+        bus.add_to(&mut out, 480, true);
+        assert!(
+            out[0].abs() > 0.4,
+            "mic must not be muted by active playback"
+        );
+    }
+
+    #[test]
+    fn block_voice_drops_microphone_only_when_enabled() {
+        let mut bus = MicBus::new(48_000, 0);
+        bus.enabled = true;
+        bus.block_voice = true;
+        bus.push_mono(&[0.5; 480]);
+        let mut out = vec![0.0; 960];
+        bus.add_to(&mut out, 480, true);
+        assert_eq!(out[0], 0.0);
+    }
 }

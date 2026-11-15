@@ -325,7 +325,7 @@ impl AppState {
 
         let (out_devices, in_devices) = EngineHandle::devices();
         cfg.output_device = pick_device(&cfg.output_device, &out_devices);
-        cfg.capture_device = pick_device(&cfg.capture_device, &in_devices);
+        cfg.capture_device = pick_capture_device(&cfg.capture_device, &in_devices);
         // A virtual-cable device must be chosen explicitly; never default to speakers.
         // When a known cable is installed, select it automatically so microphone
         // passthrough works out of the box (Soundpad uses its APO for this).
@@ -2011,6 +2011,21 @@ mod tests {
     }
 
     #[test]
+    fn capture_auto_selects_a_real_microphone_not_the_virtual_cable() {
+        let devices = vec![
+            device("CABLE Output (VB-Audio Virtual Cable)", true),
+            device("Микрофон (fifine Microphone)", false),
+        ];
+        assert_eq!(
+            pick_capture_device(&None, &devices).as_deref(),
+            Some("Микрофон (fifine Microphone)")
+        );
+        // An explicit cable capture is respected (loopback recording choice).
+        let cable = Some("CABLE Output (VB-Audio Virtual Cable)".to_string());
+        assert_eq!(pick_capture_device(&cable, &devices), cable);
+    }
+
+    #[test]
     fn mic_output_auto_selects_a_cable_but_never_speakers() {
         let speakers = vec![device("Динамики (MCHOSE X9)", true)];
         assert_eq!(pick_mic_output(&None, &speakers), None);
@@ -2160,6 +2175,32 @@ fn pick_mic_output(current: &Option<String>, devices: &[DeviceInfo]) -> Option<S
         .map(|d| d.name.clone())
 }
 
+/// Never default the microphone input to a virtual cable: doing so captures
+/// the soundboard output instead of the voice (and creates a feedback loop).
+fn pick_capture_device(current: &Option<String>, devices: &[DeviceInfo]) -> Option<String> {
+    if let Some(name) = current {
+        if devices.iter().any(|d| &d.name == name) {
+            return Some(name.clone());
+        }
+    }
+    let physical = |d: &&DeviceInfo| !is_virtual_cable(&d.name) && !is_loopback_capture(&d.name);
+    devices
+        .iter()
+        .filter(physical)
+        .find(|d| d.is_default)
+        .or_else(|| devices.iter().find(physical))
+        .or_else(|| devices.iter().find(|d| d.is_default))
+        .or_else(|| devices.first())
+        .map(|d| d.name.clone())
+}
+
+fn is_loopback_capture(name: &str) -> bool {
+    let name = name.to_lowercase();
+    ["stereo mix", "what u hear", "loopback", "wave out mix"]
+        .iter()
+        .any(|needle| name.contains(needle))
+}
+
 fn pick_device(current: &Option<String>, devices: &[DeviceInfo]) -> Option<String> {
     if let Some(name) = current {
         if devices.iter().any(|d| &d.name == name) {
@@ -2175,7 +2216,7 @@ fn pick_device(current: &Option<String>, devices: &[DeviceInfo]) -> Option<Strin
 
 pub fn apply_engine_settings(state: &mut AppState) {
     state.cfg.output_device = pick_device(&state.cfg.output_device, &state.out_devices);
-    state.cfg.capture_device = pick_device(&state.cfg.capture_device, &state.in_devices);
+    state.cfg.capture_device = pick_capture_device(&state.cfg.capture_device, &state.in_devices);
     state.cfg.mic_output_device = pick_mic_output(&state.cfg.mic_output_device, &state.out_devices);
     state
         .engine
