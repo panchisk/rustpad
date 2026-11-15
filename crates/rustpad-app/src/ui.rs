@@ -379,14 +379,13 @@ fn mic_chip(ui: &mut egui::Ui, level: f32) {
             0.8,
         );
     }
-    ui.painter()
-        .circle_filled(dot, 3.5, if live { theme::GREEN } else { theme::FAINT });
+    ui.painter().circle_filled(dot, 3.5, theme::GREEN);
     ui.painter().text(
         egui::pos2(rect.left() + 24.0, rect.center().y),
         egui::Align2::LEFT_CENTER,
         "MIC",
         egui::FontId::proportional(9.0),
-        if live { theme::TEXT } else { theme::FAINT },
+        theme::TEXT,
     );
 }
 
