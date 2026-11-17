@@ -1771,7 +1771,7 @@ impl AppState {
                 self.toast(
                     self.tr(
                         "VB-CABLE installed. Restart Windows, then RustPad will select “CABLE Input” automatically.",
-                        "VB-CABLE установлен. Перезагрузите Windows — RustPad сам выберет «CABLE Input».",
+                        "VB-CABLE установлен. Перезагрузите Windows. RustPad сам выберет «CABLE Input».",
                     ),
                     false,
                 );

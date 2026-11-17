@@ -4,8 +4,8 @@
 //! remote-control server talk to it through [`EngineHandle`] (commands in,
 //! events + status out). Two independent output streams are supported:
 //!
-//! * **Speakers** — normal playback.
-//! * **Microphone target** — usually a virtual cable input device. The real
+//! * **Speakers**: normal playback.
+//! * **Microphone target**: usually a virtual cable input device. The real
 //!   microphone is captured and mixed in, so applications selecting the cable's
 //!   output as their microphone hear both the voice and the soundboard.
 //!

@@ -140,8 +140,8 @@ Deliberate differences and remaining gaps:
 
 ## Testing
 
-- `cargo test` — unit tests for the XML formats, DSP, resampler, mixer, matrix parser.
-- `cargo run -- --list-devices` — enumerates WASAPI endpoints.
-- `cargo run -- --selftest-audio` — opens the default output/capture, plays a generated tone,
+- `cargo test`: unit tests for the XML formats, DSP, resampler, mixer, matrix parser.
+- `cargo run -- --list-devices`: enumerates WASAPI endpoints.
+- `cargo run -- --selftest-audio`: opens the default output/capture, plays a generated tone,
   records 1 s and writes a WAV (requires audio devices).
 - `rustpad -rc "GetVersion()"` against a running instance.

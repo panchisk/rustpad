@@ -1,10 +1,10 @@
 //! Visual language for RustPad.
 //!
-//! The dark theme is deliberately *true black*: the window, panels and the
-//! space between cards are `#000000`. Content sits on near-black surfaces with
-//! hairline white borders, large radii and a single vivid indigo accent, which
-//! is what gives the app its calm, premium macOS-like feel. Everything is
-//! drawn with vector primitives, so the look costs no extra textures or RAM.
+//! The interface is built like a piece of studio hardware: a black field,
+//! warm graphite surfaces, one-pixel rules and a single warm-white interaction
+//! colour. Colour is reserved for state (signal green, recording red, warning
+//! amber) and for the user's own sound tags. Headings use Segoe UI Semibold so
+//! hierarchy comes from weight, not from oversized decorative type.
 
 use eframe::egui;
 use egui::epaint::Shadow;
@@ -15,44 +15,43 @@ use rustpad_core::config::Theme;
 /// Window background. Pure black, by request.
 pub const BG: egui::Color32 = egui::Color32::from_rgb(0, 0, 0);
 /// Cards, sidebars and the transport dock.
-pub const SURFACE: egui::Color32 = egui::Color32::from_rgb(11, 11, 14);
+pub const SURFACE: egui::Color32 = egui::Color32::from_rgb(10, 10, 12);
 /// Slightly raised controls inside a card.
-pub const SURFACE_2: egui::Color32 = egui::Color32::from_rgb(19, 19, 24);
+pub const SURFACE_2: egui::Color32 = egui::Color32::from_rgb(17, 17, 20);
 /// Hovered control.
-pub const SURFACE_3: egui::Color32 = egui::Color32::from_rgb(28, 28, 34);
+pub const SURFACE_3: egui::Color32 = egui::Color32::from_rgb(25, 25, 29);
 /// Hairline border.
-pub const HAIRLINE: egui::Color32 = egui::Color32::from_rgba_premultiplied(22, 22, 22, 22);
+pub const HAIRLINE: egui::Color32 = egui::Color32::from_rgba_premultiplied(16, 16, 16, 16);
 /// Stronger border for focus / hover.
-pub const HAIRLINE_STRONG: egui::Color32 = egui::Color32::from_rgba_premultiplied(46, 46, 46, 46);
+pub const HAIRLINE_STRONG: egui::Color32 = egui::Color32::from_rgba_premultiplied(34, 34, 34, 34);
 /// Primary text.
-pub const TEXT: egui::Color32 = egui::Color32::from_rgb(246, 246, 248);
+pub const TEXT: egui::Color32 = egui::Color32::from_rgb(244, 242, 237);
 /// Secondary text.
-pub const MUTED: egui::Color32 = egui::Color32::from_rgb(148, 148, 158);
+pub const MUTED: egui::Color32 = egui::Color32::from_rgb(164, 165, 171);
 /// Tertiary text (numbers, hints).
-pub const FAINT: egui::Color32 = egui::Color32::from_rgb(96, 96, 106);
-/// The one accent used for primary actions and selection.
-pub const ACCENT: egui::Color32 = egui::Color32::from_rgb(124, 108, 255);
+pub const FAINT: egui::Color32 = egui::Color32::from_rgb(126, 128, 135);
+/// The interaction colour. Warm white keeps the chrome quiet; the sound
+/// colours, the signal meters and the live indicators carry the energy.
+pub const ACCENT: egui::Color32 = egui::Color32::from_rgb(238, 236, 230);
 /// Accent hover.
-pub const ACCENT_HOVER: egui::Color32 = egui::Color32::from_rgb(142, 128, 255);
-/// Warm secondary accent for "live" indicators.
-pub const BLUE: egui::Color32 = egui::Color32::from_rgb(96, 168, 255);
-pub const GREEN: egui::Color32 = egui::Color32::from_rgb(72, 214, 146);
-pub const AMBER: egui::Color32 = egui::Color32::from_rgb(255, 184, 76);
-pub const RED: egui::Color32 = egui::Color32::from_rgb(255, 92, 92);
+pub const ACCENT_HOVER: egui::Color32 = egui::Color32::from_rgb(255, 255, 255);
+/// Text and icons drawn on top of the accent fill.
+pub const ON_ACCENT: egui::Color32 = egui::Color32::from_rgb(9, 9, 10);
+/// Signal colours. These are semantic, not decorative.
+pub const BLUE: egui::Color32 = egui::Color32::from_rgb(110, 166, 230);
+pub const GREEN: egui::Color32 = egui::Color32::from_rgb(64, 214, 150);
+pub const AMBER: egui::Color32 = egui::Color32::from_rgb(240, 183, 90);
+pub const RED: egui::Color32 = egui::Color32::from_rgb(255, 94, 94);
 
 /// White at a given opacity, premultiplied so it composites correctly on black.
 pub fn white(alpha: u8) -> egui::Color32 {
     egui::Color32::from_rgba_premultiplied(alpha, alpha, alpha, alpha)
 }
 
-/// Soft accent tint for selected rows.
+/// Soft accent tint for selected rows. The accent is warm white, so this is a
+/// neutral wash rather than a coloured pill.
 pub fn accent_tint(alpha: u8) -> egui::Color32 {
-    egui::Color32::from_rgba_premultiplied(
-        (ACCENT.r() as u32 * alpha as u32 / 255) as u8,
-        (ACCENT.g() as u32 * alpha as u32 / 255) as u8,
-        (ACCENT.b() as u32 * alpha as u32 / 255) as u8,
-        alpha,
-    )
+    white(alpha)
 }
 
 // ------------------------------------------------------------------- fonts
@@ -61,13 +60,15 @@ fn install_fonts(ctx: &egui::Context) {
     let mut fonts = egui::FontDefinitions::default();
 
     let display_paths = [
-        "C:/Windows/Fonts/SegUIVar.ttf",
+        "C:/Windows/Fonts/seguisb.ttf",
         "C:/Windows/Fonts/segoeuib.ttf",
+        "C:/Windows/Fonts/SegUIVar.ttf",
     ];
     let text_paths = [
         "C:/Windows/Fonts/segoeui.ttf",
         "C:/Windows/Fonts/tahoma.ttf",
     ];
+    let mono_paths = ["C:/Windows/Fonts/consola.ttf", "C:/Windows/Fonts/cour.ttf"];
 
     let mut display_key = None;
     for path in display_paths {
@@ -86,6 +87,16 @@ fn install_fonts(ctx: &egui::Context) {
                 .font_data
                 .insert("text".to_owned(), egui::FontData::from_owned(bytes));
             text_key = Some("text".to_owned());
+            break;
+        }
+    }
+    let mut mono_key = None;
+    for path in mono_paths {
+        if let Ok(bytes) = std::fs::read(path) {
+            fonts
+                .font_data
+                .insert("mono".to_owned(), egui::FontData::from_owned(bytes));
+            mono_key = Some("mono".to_owned());
             break;
         }
     }
@@ -132,6 +143,11 @@ fn install_fonts(ctx: &egui::Context) {
     fonts
         .families
         .insert(egui::FontFamily::Name("display".into()), display);
+    if let Some(key) = mono_key {
+        let mut mono = vec![key];
+        mono.extend(default_family.iter().cloned());
+        fonts.families.insert(egui::FontFamily::Monospace, mono);
+    }
     // Keep symbol coverage for the small geometric glyphs used in the UI.
     for fallback in ["Segoe UI Symbol", "NotoEmoji-Regular"] {
         if fonts.font_data.contains_key(fallback) {
@@ -146,46 +162,26 @@ fn install_fonts(ctx: &egui::Context) {
     ctx.set_fonts(fonts);
 }
 
-pub fn system_prefers_dark() -> bool {
-    #[cfg(windows)]
-    {
-        use winreg::enums::HKEY_CURRENT_USER;
-        if let Ok(hkcu) = winreg::RegKey::predef(HKEY_CURRENT_USER)
-            .open_subkey(r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize")
-        {
-            if let Ok(v) = hkcu.get_value::<u32, _>("AppsUseLightTheme") {
-                return v == 0;
-            }
-        }
-        false
-    }
-    #[cfg(not(windows))]
-    {
-        false
-    }
-}
-
 pub fn install(ctx: &egui::Context) {
     install_fonts(ctx);
-    apply_theme(ctx, system_prefers_dark());
+    apply_theme(ctx);
 }
 
-/// Applies a persisted theme preference (`Light`, `Dark` or follow the system).
-pub fn apply_preference(ctx: &egui::Context, theme: Theme) {
-    let dark = match theme {
-        Theme::Light => false,
-        Theme::Dark => true,
-        Theme::System => system_prefers_dark(),
-    };
-    apply_theme(ctx, dark);
+/// The interface is dark only. A soundboard is a creative/performance tool that
+/// lives on screen next to a game or stream, and the owner asked for a black
+/// surface. A light variant was previously exposed but every custom control is
+/// painted for the dark palette, so shipping the toggle would ship a broken
+/// mode. The preference is kept in config for migration, but it resolves to the
+/// one verified theme.
+pub fn apply_preference(ctx: &egui::Context, _theme: Theme) {
+    apply_theme(ctx);
 }
 
-pub fn apply_theme(ctx: &egui::Context, dark: bool) {
-    let visuals = if dark { custom_dark() } else { custom_light() };
-    ctx.set_visuals(visuals);
+pub fn apply_theme(ctx: &egui::Context) {
+    ctx.set_visuals(custom_dark());
 
     let mut style = (*ctx.style()).clone();
-    style.animation_time = 0.16;
+    style.animation_time = 0.14;
     style.spacing.item_spacing = egui::vec2(10.0, 8.0);
     style.spacing.button_padding = egui::vec2(14.0, 7.0);
     style.spacing.interact_size = egui::vec2(34.0, 30.0);
@@ -195,25 +191,27 @@ pub fn apply_theme(ctx: &egui::Context, dark: bool) {
     style.spacing.indent = 18.0;
     style.spacing.scroll = egui::style::ScrollStyle {
         floating: true,
-        bar_width: 8.0,
-        handle_min_length: 28.0,
-        bar_inner_margin: 4.0,
+        bar_width: 3.0,
+        handle_min_length: 24.0,
+        bar_inner_margin: 2.0,
         floating_width: 3.0,
+        floating_allocated_width: 4.0,
+        foreground_color: false,
         ..Default::default()
     };
     style.text_styles = [
-        (egui::TextStyle::Small, egui::FontId::proportional(12.0)),
-        (egui::TextStyle::Body, egui::FontId::proportional(14.0)),
-        (egui::TextStyle::Button, egui::FontId::proportional(14.0)),
+        (egui::TextStyle::Small, egui::FontId::proportional(11.5)),
+        (egui::TextStyle::Body, egui::FontId::proportional(13.5)),
+        (egui::TextStyle::Button, egui::FontId::proportional(13.0)),
         (
             egui::TextStyle::Heading,
-            egui::FontId::new(22.0, egui::FontFamily::Name("display".into())),
+            egui::FontId::new(21.0, egui::FontFamily::Name("display".into())),
         ),
-        (egui::TextStyle::Monospace, egui::FontId::monospace(13.0)),
+        (egui::TextStyle::Monospace, egui::FontId::monospace(12.0)),
     ]
     .into();
-    style.visuals.menu_rounding = egui::Rounding::same(12.0);
-    style.visuals.window_rounding = egui::Rounding::same(18.0);
+    style.visuals.menu_rounding = egui::Rounding::same(10.0);
+    style.visuals.window_rounding = egui::Rounding::same(14.0);
     style.visuals.popup_shadow = Shadow {
         offset: egui::vec2(0.0, 10.0),
         blur: 28.0,
@@ -231,12 +229,12 @@ fn custom_dark() -> egui::Visuals {
     v.extreme_bg_color = egui::Color32::from_rgb(5, 5, 7);
     v.faint_bg_color = egui::Color32::from_rgb(9, 9, 12);
     v.code_bg_color = egui::Color32::from_rgb(14, 14, 18);
-    v.selection.bg_fill = accent_tint(58);
+    v.selection.bg_fill = egui::Color32::from_rgba_premultiplied(13, 13, 13, 13);
     v.selection.stroke = egui::Stroke::new(1.0_f32, TEXT);
-    v.hyperlink_color = ACCENT;
+    v.hyperlink_color = TEXT;
     v.warn_fg_color = AMBER;
     v.error_fg_color = RED;
-    v.window_rounding = egui::Rounding::same(18.0);
+    v.window_rounding = egui::Rounding::same(14.0);
     v.window_stroke = egui::Stroke::new(1.0_f32, HAIRLINE);
     v.window_shadow = Shadow {
         offset: egui::vec2(0.0, 18.0),
@@ -253,7 +251,7 @@ fn custom_dark() -> egui::Visuals {
     };
     v.override_text_color = Some(TEXT);
 
-    let r = egui::Rounding::same(10.0);
+    let r = egui::Rounding::same(8.0);
     v.widgets.noninteractive.bg_fill = SURFACE;
     v.widgets.noninteractive.weak_bg_fill = SURFACE;
     v.widgets.noninteractive.bg_stroke = egui::Stroke::NONE;
@@ -273,9 +271,9 @@ fn custom_dark() -> egui::Visuals {
     v.widgets.hovered.rounding = r;
     v.widgets.hovered.expansion = 0.0;
 
-    v.widgets.active.bg_fill = egui::Color32::from_rgb(38, 38, 46);
-    v.widgets.active.weak_bg_fill = egui::Color32::from_rgb(38, 38, 46);
-    v.widgets.active.bg_stroke = egui::Stroke::new(1.0_f32, ACCENT);
+    v.widgets.active.bg_fill = egui::Color32::from_rgb(34, 34, 38);
+    v.widgets.active.weak_bg_fill = egui::Color32::from_rgb(34, 34, 38);
+    v.widgets.active.bg_stroke = egui::Stroke::new(1.0_f32, TEXT);
     v.widgets.active.fg_stroke = egui::Stroke::new(1.0_f32, egui::Color32::WHITE);
     v.widgets.active.rounding = r;
 
@@ -289,49 +287,4 @@ fn custom_dark() -> egui::Visuals {
     v.striped = false;
     v.window_highlight_topmost = false;
     v
-}
-
-fn custom_light() -> egui::Visuals {
-    // A calm, paper-like counterpart used only when the user explicitly asks
-    // for the light theme. The default experience is true black.
-    let mut v = egui::Visuals::light();
-    v.panel_fill = egui::Color32::from_rgb(250, 250, 252);
-    v.window_fill = egui::Color32::WHITE;
-    v.extreme_bg_color = egui::Color32::WHITE;
-    v.faint_bg_color = egui::Color32::from_rgb(244, 244, 247);
-    v.selection.bg_fill = egui::Color32::from_rgb(108, 92, 231);
-    v.selection.stroke = egui::Stroke::new(1.0_f32, egui::Color32::WHITE);
-    v.hyperlink_color = egui::Color32::from_rgb(86, 70, 220);
-    v.window_rounding = egui::Rounding::same(18.0);
-    v.window_stroke = egui::Stroke::new(1.0_f32, egui::Color32::from_rgb(226, 226, 232));
-    v.menu_rounding = egui::Rounding::same(12.0);
-    v.widgets.noninteractive.bg_stroke =
-        egui::Stroke::new(1.0_f32, egui::Color32::from_rgb(228, 228, 234));
-    v
-}
-
-/// Draws a soft, layered glow behind a shape. Cheap: a handful of rounded
-/// rectangles, no blur textures.
-pub fn glow(
-    painter: &egui::Painter,
-    rect: egui::Rect,
-    rounding: egui::Rounding,
-    color: egui::Color32,
-    strength: f32,
-) {
-    let alpha = (strength * 60.0).clamp(0.0, 60.0) as u8;
-    for (i, spread) in [6.0f32, 4.0, 2.0].iter().enumerate() {
-        let a = (alpha as f32 * (1.0 - i as f32 * 0.28)).max(0.0) as u8;
-        let c = egui::Color32::from_rgba_premultiplied(
-            (color.r() as u32 * a as u32 / 255) as u8,
-            (color.g() as u32 * a as u32 / 255) as u8,
-            (color.b() as u32 * a as u32 / 255) as u8,
-            a,
-        );
-        painter.rect_stroke(
-            rect.expand(*spread),
-            rounding,
-            egui::Stroke::new(2.0_f32, c),
-        );
-    }
 }

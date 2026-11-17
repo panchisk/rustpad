@@ -196,7 +196,7 @@ impl Default for AppConfig {
             distinguish_left_right_modifiers: false,
             pass_hotkeys: true,
             auto_keys_enabled: false,
-            auto_keys_vk: 0x56, // 'V' — the common push-to-talk key
+            auto_keys_vk: 0x56, // 'V': the common push-to-talk key
             auto_keys_modifiers: 0,
             auto_keys_only_hotkey: false,
             hotkeys: HashMap::new(),

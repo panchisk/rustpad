@@ -1,177 +1,76 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1600" height="600" viewBox="0 0 1600 600" role="img" aria-labelledby="title desc">
-  <title id="title">RustPad — a Windows soundboard written in Rust</title>
-  <desc id="desc">Black cover with the RustPad wordmark and a vector illustration of the application window.</desc>
-  <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#050506"/>
-      <stop offset="0.55" stop-color="#08080B"/>
-      <stop offset="1" stop-color="#0B0913"/>
-    </linearGradient>
-    <radialGradient id="glowA" cx="0.82" cy="0.18" r="0.55">
-      <stop offset="0" stop-color="#7C6CFF" stop-opacity="0.24"/>
-      <stop offset="1" stop-color="#7C6CFF" stop-opacity="0"/>
-    </radialGradient>
-    <radialGradient id="glowB" cx="0.12" cy="0.9" r="0.45">
-      <stop offset="0" stop-color="#4E8DFF" stop-opacity="0.12"/>
-      <stop offset="1" stop-color="#4E8DFF" stop-opacity="0"/>
-    </radialGradient>
-    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#9B8CFF"/>
-      <stop offset="1" stop-color="#6552F2"/>
-    </linearGradient>
-    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
-      <path d="M40 0H0V40" fill="none" stroke="#FFFFFF" stroke-opacity="0.035"/>
-    </pattern>
-    <filter id="soft" x="-30%" y="-30%" width="160%" height="160%">
-      <feGaussianBlur stdDeviation="22"/>
-    </filter>
-  </defs>
+  <title id="title">RustPad: a Windows soundboard written in Rust</title>
+  <desc id="desc">Black cover with the RustPad wordmark, a signal-bar mark and a waveform made of vertical bars.</desc>
 
-  <rect width="1600" height="600" fill="url(#bg)"/>
-  <rect width="1600" height="600" fill="url(#grid)"/>
-  <rect width="1600" height="600" fill="url(#glowA)"/>
-  <rect width="1600" height="600" fill="url(#glowB)"/>
+  <rect width="1600" height="600" fill="#000000"/>
 
-  <!-- left: identity -->
-  <g transform="translate(96 154)">
-    <circle cx="40" cy="40" r="40" fill="url(#accent)"/>
-    <circle cx="40" cy="40" r="39.5" fill="none" stroke="#FFFFFF" stroke-opacity="0.22"/>
-    <rect x="26" y="35" width="5" height="10" rx="2.5" fill="#FFFFFF"/>
-    <rect x="37.5" y="27" width="5" height="26" rx="2.5" fill="#FFFFFF"/>
-    <rect x="49" y="32" width="5" height="16" rx="2.5" fill="#FFFFFF"/>
+  <!-- identity -->
+  <g transform="translate(96 82)">
+    <rect width="72" height="72" rx="20" fill="#EEECE6"/>
+    <rect x="20" y="31" width="6" height="12" rx="3" fill="#09090A"/>
+    <rect x="33" y="20" width="6" height="34" rx="3" fill="#09090A"/>
+    <rect x="46" y="28" width="6" height="18" rx="3" fill="#09090A"/>
+  </g>
+  <text x="96" y="256" fill="#F4F2ED" font-family="Segoe UI, Arial, sans-serif" font-size="116" font-weight="600" letter-spacing="-4">RustPad</text>
+  <text x="100" y="306" fill="#9C9DA3" font-family="Segoe UI, Arial, sans-serif" font-size="24">Windows soundboard</text>
+  <text x="100" y="360" fill="#F4F2ED" font-family="Segoe UI, Arial, sans-serif" font-size="24">Reads Soundpad 4.x lists, hotkeys and remote control.</text>
+  <text x="100" y="394" fill="#9C9DA3" font-family="Segoe UI, Arial, sans-serif" font-size="24">Routes sound and voice through one virtual cable.</text>
 
-    <text x="104" y="52" fill="#F6F6F8" font-family="Segoe UI, Inter, Arial, sans-serif"
-          font-size="58" font-weight="700" letter-spacing="-2">RustPad</text>
-
-    <text x="2" y="132" fill="#8D8D99" font-family="Segoe UI, Inter, Arial, sans-serif"
-          font-size="13" font-weight="600" letter-spacing="3.2">WINDOWS SOUNDBOARD</text>
-
-    <text x="2" y="188" fill="#D7D7DF" font-family="Segoe UI, Inter, Arial, sans-serif"
-          font-size="27" font-weight="400">Soundpad lists, hotkeys and remote control.</text>
-    <text x="2" y="226" fill="#D7D7DF" font-family="Segoe UI, Inter, Arial, sans-serif"
-          font-size="27" font-weight="400">Written in Rust, mixed in user mode.</text>
-
-    <g transform="translate(2 278)">
-      <rect width="152" height="34" rx="17" fill="#FFFFFF" fill-opacity="0.06" stroke="#FFFFFF" stroke-opacity="0.12"/>
-      <text x="76" y="22" text-anchor="middle" fill="#CFCFDA" font-family="Segoe UI, Inter, Arial, sans-serif"
-            font-size="13" font-weight="500">Soundpad .spl</text>
-      <rect x="164" width="134" height="34" rx="17" fill="#FFFFFF" fill-opacity="0.06" stroke="#FFFFFF" stroke-opacity="0.12"/>
-      <text x="231" y="22" text-anchor="middle" fill="#CFCFDA" font-family="Segoe UI, Inter, Arial, sans-serif"
-            font-size="13" font-weight="500">VB-CABLE</text>
-      <rect x="310" width="122" height="34" rx="17" fill="#FFFFFF" fill-opacity="0.06" stroke="#FFFFFF" stroke-opacity="0.12"/>
-      <text x="371" y="22" text-anchor="middle" fill="#CFCFDA" font-family="Segoe UI, Inter, Arial, sans-serif"
-            font-size="13" font-weight="500">WASAPI</text>
-    </g>
+  <line x1="96" y1="456" x2="690" y2="456" stroke="#FFFFFF" stroke-opacity="0.14"/>
+  <g font-family="Consolas, monospace" font-size="15" fill="#7E8087">
+    <text x="96" y="490">Soundpad .spl</text>
+    <text x="300" y="490">VB-CABLE</text>
+    <text x="470" y="490">WASAPI</text>
+    <text x="620" y="490">Rust</text>
   </g>
 
-  <!-- right: application window illustration -->
-  <g transform="translate(826 96)">
-    <rect x="0" y="20" width="690" height="424" rx="22" fill="#000000" opacity="0.55" filter="url(#soft)"/>
-    <rect x="0" y="0" width="690" height="424" rx="18" fill="#0A0A0D" stroke="#FFFFFF" stroke-opacity="0.14"/>
-    <path d="M0 18A18 18 0 0 1 18 0H672A18 18 0 0 1 690 18V46H0Z" fill="#101014"/>
-    <circle cx="24" cy="23" r="4" fill="#FF6159"/>
-    <circle cx="38" cy="23" r="4" fill="#FFBD2E"/>
-    <circle cx="52" cy="23" r="4" fill="#29C840"/>
-    <rect x="78" y="15" width="16" height="16" rx="5" fill="#7C6CFF"/>
-    <text x="102" y="27" fill="#ECECF2" font-family="Segoe UI, Inter, Arial, sans-serif" font-size="12" font-weight="600">RustPad</text>
-    <rect x="410" y="12" width="188" height="22" rx="11" fill="#16161C" stroke="#FFFFFF" stroke-opacity="0.08"/>
-    <circle cx="424" cy="23" r="4" fill="none" stroke="#8A8A96" stroke-width="1.4"/>
-    <path d="M427 26l3 3" stroke="#8A8A96" stroke-width="1.4" stroke-linecap="round"/>
-
-    <!-- sidebar -->
-    <rect x="16" y="60" width="162" height="344" rx="12" fill="#0E0E12"/>
-    <text x="30" y="86" fill="#F1F1F6" font-family="Segoe UI, Inter, Arial, sans-serif" font-size="13" font-weight="600">Library</text>
-    <g font-family="Segoe UI, Inter, Arial, sans-serif" font-size="10.5" fill="#A2A2AE">
-      <rect x="26" y="102" width="142" height="28" rx="8" fill="#7C6CFF" fill-opacity="0.18"/>
-      <rect x="26" y="102" width="3" height="28" rx="1.5" fill="#7C6CFF"/>
-      <circle cx="42" cy="116" r="7" fill="#7C6CFF" fill-opacity="0.22"/>
-      <rect x="38" y="114" width="8" height="4" rx="1" fill="#B9AEFF"/>
-      <text x="56" y="120">All sounds</text>
-      <text x="150" y="120" text-anchor="end" fill="#7E7E8A">158</text>
-
-      <circle cx="42" cy="148" r="7" fill="#FFB44C" fill-opacity="0.18"/>
-      <rect x="38" y="146" width="8" height="4" rx="1" fill="#FFB44C"/>
-      <text x="56" y="152">Music</text>
-      <text x="150" y="152" text-anchor="end" fill="#7E7E8A">42</text>
-
-      <circle cx="42" cy="180" r="7" fill="#48D692" fill-opacity="0.18"/>
-      <rect x="38" y="178" width="8" height="4" rx="1" fill="#48D692"/>
-      <text x="56" y="184">Memes</text>
-      <text x="150" y="184" text-anchor="end" fill="#7E7E8A">61</text>
-
-      <circle cx="42" cy="212" r="7" fill="#60A8FF" fill-opacity="0.18"/>
-      <rect x="38" y="210" width="8" height="4" rx="1" fill="#60A8FF"/>
-      <text x="56" y="216">Voice lines</text>
-      <text x="150" y="216" text-anchor="end" fill="#7E7E8A">29</text>
+  <!-- signal bars: the same mark as the app logo and the playing rows -->
+  <g transform="translate(790 118)">
+    <line x1="0" y1="364" x2="704" y2="364" stroke="#FFFFFF" stroke-opacity="0.10"/>
+    <g fill="#F4F2ED">
+      <rect x="0" y="150" width="8" height="214" rx="4"/>
+      <rect x="18" y="182" width="8" height="150" rx="4"/>
+      <rect x="36" y="126" width="8" height="238" rx="4"/>
+      <rect x="54" y="214" width="8" height="86" rx="4"/>
+      <rect x="72" y="96" width="8" height="268" rx="4"/>
+      <rect x="90" y="170" width="8" height="194" rx="4"/>
+      <rect x="108" y="42" width="8" height="322" rx="4"/>
+      <rect x="126" y="136" width="8" height="228" rx="4"/>
+      <rect x="144" y="190" width="8" height="174" rx="4"/>
+      <rect x="162" y="64" width="8" height="300" rx="4"/>
+      <rect x="180" y="154" width="8" height="210" rx="4"/>
+      <rect x="198" y="112" width="8" height="252" rx="4"/>
+      <rect x="216" y="206" width="8" height="158" rx="4"/>
+      <rect x="234" y="24" width="8" height="340" rx="4"/>
+      <rect x="252" y="148" width="8" height="216" rx="4"/>
+      <rect x="270" y="90" width="8" height="274" rx="4"/>
+      <rect x="288" y="182" width="8" height="182" rx="4"/>
+      <rect x="306" y="56" width="8" height="308" rx="4"/>
+      <rect x="324" y="132" width="8" height="232" rx="4"/>
+      <rect x="342" y="198" width="8" height="166" rx="4"/>
+      <rect x="360" y="76" width="8" height="288" rx="4"/>
+      <rect x="378" y="160" width="8" height="204" rx="4"/>
+      <rect x="396" y="108" width="8" height="256" rx="4"/>
+      <rect x="414" y="218" width="8" height="146" rx="4"/>
+      <rect x="432" y="34" width="8" height="330" rx="4"/>
+      <rect x="450" y="142" width="8" height="222" rx="4"/>
+      <rect x="468" y="98" width="8" height="266" rx="4"/>
+      <rect x="486" y="186" width="8" height="178" rx="4"/>
+      <rect x="504" y="52" width="8" height="312" rx="4"/>
+      <rect x="522" y="124" width="8" height="240" rx="4"/>
+      <rect x="540" y="170" width="8" height="194" rx="4"/>
+      <rect x="558" y="70" width="8" height="294" rx="4"/>
+      <rect x="576" y="146" width="8" height="218" rx="4"/>
+      <rect x="594" y="106" width="8" height="258" rx="4"/>
+      <rect x="612" y="202" width="8" height="162" rx="4"/>
+      <rect x="630" y="36" width="8" height="328" rx="4"/>
+      <rect x="648" y="154" width="8" height="210" rx="4"/>
+      <rect x="666" y="88" width="8" height="276" rx="4"/>
+      <rect x="684" y="176" width="8" height="188" rx="4"/>
     </g>
-    <rect x="26" y="334" width="142" height="30" rx="8" fill="#7C6CFF"/>
-    <text x="97" y="353" text-anchor="middle" fill="#FFFFFF" font-family="Segoe UI, Inter, Arial, sans-serif" font-size="10.5" font-weight="600">Add sounds</text>
-
-    <!-- table -->
-    <text x="198" y="86" fill="#F6F6F8" font-family="Segoe UI, Inter, Arial, sans-serif" font-size="18" font-weight="600">Sounds</text>
-    <text x="198" y="104" fill="#777782" font-family="Segoe UI, Inter, Arial, sans-serif" font-size="9.5">14 sounds · 158 total</text>
-    <rect x="198" y="118" width="476" height="250" rx="12" fill="#0B0B0F" stroke="#FFFFFF" stroke-opacity="0.1"/>
-
-    <g font-family="Segoe UI, Inter, Arial, sans-serif" font-size="8" fill="#6E6E79" letter-spacing="0.6">
-      <text x="214" y="138">TITLE</text>
-      <text x="400" y="138">TIME</text>
-      <text x="462" y="138">KEY</text>
-      <text x="540" y="138">PLAYS</text>
-    </g>
-    <line x1="198" y1="148" x2="674" y2="148" stroke="#FFFFFF" stroke-opacity="0.08"/>
-
-    <g font-family="Segoe UI, Inter, Arial, sans-serif" font-size="10">
-      <rect x="210" y="158" width="18" height="18" rx="5" fill="#7C6CFF" fill-opacity="0.3" stroke="#7C6CFF" stroke-opacity="0.65"/>
-      <rect x="215" y="163" width="2" height="8" rx="1" fill="#C8C0FF"/>
-      <rect x="219" y="161" width="2" height="12" rx="1" fill="#C8C0FF"/>
-      <rect x="223" y="165" width="2" height="6" rx="1" fill="#C8C0FF"/>
-      <text x="240" y="171" fill="#ECECF2">kick intro</text>
-      <text x="400" y="171" fill="#A0A0AC">0:03</text>
-      <text x="462" y="171" fill="#A0A0AC">4</text>
-      <text x="540" y="171" fill="#A0A0AC">26</text>
-
-      <rect x="210" y="190" width="18" height="18" rx="5" fill="#48D692" fill-opacity="0.24" stroke="#48D692" stroke-opacity="0.6"/>
-      <text x="240" y="203" fill="#ECECF2">airhorn</text>
-      <text x="400" y="203" fill="#A0A0AC">0:01</text>
-      <text x="462" y="203" fill="#A0A0AC">1</text>
-      <text x="540" y="203" fill="#A0A0AC">91</text>
-
-      <rect x="198" y="214" width="476" height="30" fill="#7C6CFF" fill-opacity="0.2"/>
-      <rect x="198" y="214" width="3" height="30" fill="#7C6CFF"/>
-      <rect x="210" y="220" width="18" height="18" rx="5" fill="#FF5C5C" fill-opacity="0.28" stroke="#FF5C5C" stroke-opacity="0.6"/>
-      <text x="240" y="233" fill="#FFFFFF">bass drop</text>
-      <text x="400" y="233" fill="#D9D9E2">0:04</text>
-      <text x="462" y="233" fill="#D9D9E2">2</text>
-      <text x="540" y="233" fill="#D9D9E2">57</text>
-
-      <rect x="210" y="252" width="18" height="18" rx="5" fill="#FFB44C" fill-opacity="0.24" stroke="#FFB44C" stroke-opacity="0.6"/>
-      <text x="240" y="265" fill="#ECECF2">level up</text>
-      <text x="400" y="265" fill="#A0A0AC">0:02</text>
-      <text x="462" y="265" fill="#A0A0AC">3</text>
-      <text x="540" y="265" fill="#A0A0AC">18</text>
-
-      <rect x="210" y="284" width="18" height="18" rx="5" fill="#60A8FF" fill-opacity="0.24" stroke="#60A8FF" stroke-opacity="0.6"/>
-      <text x="240" y="297" fill="#ECECF2">what was that</text>
-      <text x="400" y="297" fill="#A0A0AC">0:06</text>
-      <text x="462" y="297" fill="#A0A0AC">5</text>
-      <text x="540" y="297" fill="#A0A0AC">33</text>
-
-      <rect x="210" y="316" width="18" height="18" rx="5" fill="#7C6CFF" fill-opacity="0.24" stroke="#7C6CFF" stroke-opacity="0.6"/>
-      <text x="240" y="329" fill="#ECECF2">long outro</text>
-      <text x="400" y="329" fill="#A0A0AC">0:12</text>
-      <text x="462" y="329" fill="#A0A0AC">6</text>
-      <text x="540" y="329" fill="#A0A0AC">12</text>
-    </g>
-
-    <!-- transport -->
-    <rect x="198" y="378" width="476" height="40" rx="12" fill="#0E0E12" stroke="#FFFFFF" stroke-opacity="0.1"/>
-    <circle cx="220" cy="398" r="11" fill="#16161C" stroke="#FFFFFF" stroke-opacity="0.12"/>
-    <path d="M218 392L224 398L218 404Z" fill="#D8D8E2"/>
-    <circle cx="254" cy="398" r="15" fill="#7C6CFF"/>
-    <path d="M251 391L262 398L251 405Z" fill="#FFFFFF"/>
-    <circle cx="288" cy="398" r="11" fill="#16161C" stroke="#FFFFFF" stroke-opacity="0.12"/>
-    <path d="M291 392L285 398L291 404Z" fill="#D8D8E2"/>
-    <rect x="328" y="394" width="160" height="3" rx="1.5" fill="#FFFFFF" fill-opacity="0.1"/>
-    <rect x="328" y="394" width="112" height="3" rx="1.5" fill="#7C6CFF"/>
+    <rect x="378" y="76" width="8" height="288" rx="4" fill="#40D696"/>
   </g>
+
+  <text x="96" y="548" fill="#5F6168" font-family="Segoe UI, Arial, sans-serif" font-size="14">Windows 10 and 11 · x86_64 · MIT</text>
+  <text x="1504" y="548" text-anchor="end" fill="#5F6168" font-family="Consolas, monospace" font-size="14">rustpad</text>
 </svg>

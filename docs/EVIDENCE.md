@@ -1,4 +1,4 @@
-# Soundpad 4.0.35 — reverse-engineering dossier
+# Soundpad 4.0.35: reverse-engineering dossier
 
 Target: `C:\Program Files (x86)\Steam\steamapps\common\Soundpad`
 Workflow: REA 6.7.0 (skill v42) + static PE inspection. See "Tooling limits" at the end.
@@ -159,7 +159,7 @@ Soundpad.exe audio control (UniteFxControl)
   `: Command not available in trial version.`, `Remote control receive/response failed: %x`.
 - URI scheme `soundpad://` and `soundlist/` handler. [OBS]
 
-## 5. On-disk formats [OBS — live files from this machine]
+## 5. On-disk formats [OBS: live files from this machine]
 
 `%APPDATA%\Leppsoft\soundlist.spl` (also `%USERPROFILE%\Documents\soundpad\soundlist.spl`),
 `stats.spl`, `backup-soundlist-YYYY-MM-DD.spl`. XML, UTF-8, CRLF, 2-space indent:
@@ -212,7 +212,7 @@ Soundpad.exe audio control (UniteFxControl)
 <Stats><Sound hash="..." playCount="2" lastPlayedOn="2026-10-16"/></Stats>
 ```
 
-## 6. Configuration [OBS — live `HKCU\Software\Leppsoft\Soundpad`]
+## 6. Configuration [OBS: live `HKCU\Software\Leppsoft\Soundpad`]
 
 `wxFileConfig` registry layout, groups `MainFrame`, `MainFrame\Hotbar`, `MainFrame\SoundTable`,
 `MainFrame\CategoryTable`, `MainFrame\session`, `ConfigFrame`.

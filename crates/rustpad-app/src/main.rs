@@ -1,4 +1,4 @@
-//! RustPad — a Rust soundboard for Windows with Soundpad-compatible `.spl` lists
+//! RustPad: a Rust soundboard for Windows with Soundpad-compatible `.spl` lists
 //! and remote control.
 
 mod app;
@@ -408,7 +408,7 @@ fn run_gui(args: Vec<String>) -> Result<()> {
 
 fn print_help() {
     println!(
-        "RustPad — Rust soundboard for Windows (Soundpad 4.x compatible)
+        "RustPad: Rust soundboard for Windows (Soundpad 4.x compatible)
 
 usage:
   rustpad [--list <f.spl>]    start the GUI (optionally with another sound list)

@@ -99,7 +99,7 @@ mod imp {
     const POLL: Duration = Duration::from_millis(100);
     const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(10 * 60);
     const INSTALL_TIMEOUT: Duration = Duration::from_secs(5 * 60);
-    /// `CREATE_NO_WINDOW` — hides the helper console.
+    /// `CREATE_NO_WINDOW`: hides the helper console.
     const CREATE_NO_WINDOW: u32 = 0x0800_0000;
     /// One subkey per audio render endpoint.
     const RENDER_KEY: &str = r"SOFTWARE\Microsoft\Windows\CurrentVersion\MMDevices\Audio\Render";

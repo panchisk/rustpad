@@ -32,6 +32,15 @@ const PRESET_COLORS: [Rgb; 6] = [
 
 const MODIFIER_CHOICES: [&str; 4] = ["Ctrl", "Alt", "Shift", "Win"];
 
+/// The desktop layout grid. Keeping these values in one place is what makes
+/// the window feel aligned instead of assembled from unrelated cards.
+const TOPBAR_H: f32 = 54.0;
+const SIDEBAR_W: f32 = 226.0;
+const CATEGORY_ROW_H: f32 = 38.0;
+const TABLE_ROW_H: f32 = 44.0;
+const DOCK_COLLAPSED_H: f32 = 148.0;
+const DOCK_EXPANDED_H: f32 = 292.0;
+
 /// Special actions offered in Settings ▸ Hotkeys and the overview window.
 const SPECIAL_ACTIONS: &[&str] = &[
     action_id::PLAY_SELECTED,
@@ -71,8 +80,6 @@ enum SortCol {
     Duration,
     Hotkey,
     Plays,
-    Tag,
-    File,
 }
 
 /// Per-window UI state that lives in egui's temporary data store.
@@ -159,24 +166,7 @@ enum Act {
 // -------------------------------------------------------------- primitives
 
 fn entrance_at(uis: &UiState, now: f64, delay: f64) -> f32 {
-    ease_out(((now - uis.anim_start - delay) / 0.55) as f32)
-}
-
-fn gloss(painter: &egui::Painter, rect: egui::Rect, radius: f32, alpha: u8) {
-    let top = egui::Rect::from_min_max(
-        egui::pos2(rect.left() + 1.0, rect.top() + 1.0),
-        egui::pos2(rect.right() - 1.0, rect.top() + rect.height() * 0.48),
-    );
-    painter.rect_filled(
-        top,
-        egui::Rounding {
-            nw: radius,
-            ne: radius,
-            sw: 0.0,
-            se: 0.0,
-        },
-        theme::white(alpha),
-    );
+    ease_out(((now - uis.anim_start - delay) / 0.22) as f32)
 }
 
 fn tint(color: egui::Color32, alpha: u8) -> egui::Color32 {
@@ -256,6 +246,13 @@ fn label(text: impl Into<String>, size: f32, color: egui::Color32) -> egui::Rich
         .family(egui::FontFamily::Proportional)
 }
 
+fn mono(text: impl Into<String>, size: f32, color: egui::Color32) -> egui::RichText {
+    egui::RichText::new(text)
+        .size(size)
+        .color(color)
+        .family(egui::FontFamily::Monospace)
+}
+
 fn display_label(text: impl Into<String>, size: f32, color: egui::Color32) -> egui::RichText {
     egui::RichText::new(text)
         .size(size)
@@ -294,7 +291,7 @@ fn pill_button(ui: &mut egui::Ui, text: &str, active: bool, accent: bool) -> egu
         text.to_owned(),
         font.clone(),
         if accent {
-            egui::Color32::WHITE
+            theme::ON_ACCENT
         } else if active {
             theme::TEXT
         } else {
@@ -308,10 +305,7 @@ fn pill_button(ui: &mut egui::Ui, text: &str, active: bool, accent: bool) -> egu
         .animate_bool_with_time(resp.id, resp.hovered(), 0.12);
     let pressed = resp.is_pointer_button_down_on();
     let shrink = if pressed { 1.0 } else { 0.0 };
-    let mut rect = rect.shrink(shrink);
-    if accent {
-        rect = rect.translate(egui::vec2(0.0, -hover * 0.8));
-    }
+    let rect = rect.shrink(shrink);
     let fill = if accent {
         theme::ACCENT.lerp_to_gamma(theme::ACCENT_HOVER, hover)
     } else if active {
@@ -320,29 +314,12 @@ fn pill_button(ui: &mut egui::Ui, text: &str, active: bool, accent: bool) -> egu
         theme::SURFACE_2.lerp_to_gamma(theme::SURFACE_3, hover)
     };
     ui.painter()
-        .rect_filled(rect, egui::Rounding::same(rect.height() / 2.0), fill);
-    if accent {
-        theme::glow(
-            ui.painter(),
-            rect,
-            egui::Rounding::same(rect.height() / 2.0),
-            theme::ACCENT,
-            hover,
-        );
-        gloss(ui.painter(), rect, rect.height() / 2.0, 10);
-        ui.painter().line_segment(
-            [
-                egui::pos2(rect.left() + 12.0, rect.top() + 1.0),
-                egui::pos2(rect.right() - 12.0, rect.top() + 1.0),
-            ],
-            egui::Stroke::new(1.0_f32, theme::white(36)),
-        );
-    }
+        .rect_filled(rect, egui::Rounding::same(8.0), fill);
     ui.painter().galley(
         rect.center() - galley.size() / 2.0,
         galley,
         if accent {
-            egui::Color32::WHITE
+            theme::ON_ACCENT
         } else if active || hover > 0.4 {
             theme::TEXT
         } else {
@@ -361,25 +338,17 @@ fn mic_chip(ui: &mut egui::Ui, level: f32) {
     let live = level > 0.015;
     ui.painter().rect_filled(
         rect,
-        egui::Rounding::same(14.0),
+        egui::Rounding::same(7.0),
         theme::SURFACE_2.lerp_to_gamma(theme::SURFACE_3, hover * 0.3),
     );
     ui.painter().rect_stroke(
         rect,
-        egui::Rounding::same(14.0),
+        egui::Rounding::same(7.0),
         egui::Stroke::new(1.0_f32, theme::HAIRLINE),
     );
     let dot = rect.left_center() + egui::vec2(13.0, 0.0);
-    if live {
-        theme::glow(
-            ui.painter(),
-            egui::Rect::from_center_size(dot, egui::vec2(12.0, 12.0)),
-            egui::Rounding::same(6.0),
-            theme::GREEN,
-            0.8,
-        );
-    }
-    ui.painter().circle_filled(dot, 3.5, theme::GREEN);
+    ui.painter()
+        .circle_filled(dot, 3.5, if live { theme::GREEN } else { theme::FAINT });
     ui.painter().text(
         egui::pos2(rect.left() + 24.0, rect.center().y),
         egui::Align2::LEFT_CENTER,
@@ -404,10 +373,10 @@ fn setup_chip(ui: &mut egui::Ui, text: &str) -> egui::Response {
         .animate_bool_with_time(resp.id, resp.hovered(), 0.12);
     let fill = theme::SURFACE_2.lerp_to_gamma(theme::SURFACE_3, hover);
     ui.painter()
-        .rect_filled(rect, egui::Rounding::same(14.0), fill);
+        .rect_filled(rect, egui::Rounding::same(7.0), fill);
     ui.painter().rect_stroke(
         rect,
-        egui::Rounding::same(14.0),
+        egui::Rounding::same(7.0),
         egui::Stroke::new(1.0_f32, theme::HAIRLINE),
     );
     ui.painter().circle_filled(
@@ -442,24 +411,14 @@ fn wide_button(ui: &mut egui::Ui, text: &str, accent: bool) -> egui::Response {
         theme::SURFACE_2.lerp_to_gamma(theme::SURFACE_3, hover)
     };
     ui.painter()
-        .rect_filled(rect, egui::Rounding::same(11.0), fill);
-    if accent {
-        theme::glow(
-            ui.painter(),
-            rect,
-            egui::Rounding::same(11.0),
-            theme::ACCENT,
-            hover * 0.6,
-        );
-        gloss(ui.painter(), rect, 11.0, 9);
-    }
+        .rect_filled(rect, egui::Rounding::same(8.0), fill);
     ui.painter().text(
         rect.center(),
         egui::Align2::CENTER_CENTER,
         text,
-        egui::FontId::proportional(13.0),
+        egui::FontId::proportional(12.5),
         if accent {
-            egui::Color32::WHITE
+            theme::ON_ACCENT
         } else {
             theme::TEXT
         },
@@ -670,28 +629,13 @@ fn transport_button(
         }
         let fill = theme::ACCENT.lerp_to_gamma(theme::ACCENT_HOVER, hover);
         ui.painter().circle_filled(rect.center(), size / 2.0, fill);
-        ui.painter().circle_stroke(
-            rect.center(),
-            size / 2.0 - 0.5,
-            egui::Stroke::new(1.0_f32, theme::white(48)),
-        );
-        gloss(ui.painter(), rect, size / 2.0, 12);
-    } else {
-        let fill = if hover > 0.0 {
-            theme::SURFACE_3
-        } else {
-            theme::SURFACE_2
-        };
-        ui.painter().circle_filled(rect.center(), size / 2.0, fill);
-        ui.painter().circle_stroke(
-            rect.center(),
-            size / 2.0 - 0.5,
-            egui::Stroke::new(1.0_f32, theme::HAIRLINE),
-        );
+    } else if hover > 0.01 {
+        ui.painter()
+            .circle_filled(rect.center(), size / 2.0, theme::SURFACE_2);
     }
 
     let color = if primary {
-        egui::Color32::WHITE
+        theme::ON_ACCENT
     } else {
         theme::TEXT
     };
@@ -771,13 +715,12 @@ fn transport_button(
     resp
 }
 
-fn draw_search(ui: &mut egui::Ui, state: &mut AppState, uis: &mut UiState) {
-    let width = 250.0_f32;
+fn draw_search(ui: &mut egui::Ui, state: &mut AppState, uis: &mut UiState, width: f32) {
     egui::Frame::none()
         .fill(theme::SURFACE_2)
         .stroke(egui::Stroke::new(1.0_f32, theme::HAIRLINE))
-        .rounding(egui::Rounding::same(11.0))
-        .inner_margin(egui::Margin::symmetric(12.0, 5.0))
+        .rounding(egui::Rounding::same(9.0))
+        .inner_margin(egui::Margin::symmetric(11.0, 4.0))
         .show(ui, |ui| {
             ui.set_width(width);
             ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
@@ -786,18 +729,18 @@ fn draw_search(ui: &mut egui::Ui, state: &mut AppState, uis: &mut UiState) {
                 let ic = icon_rect.center();
                 ui.painter().circle_stroke(
                     ic + egui::vec2(-1.5, -1.5),
-                    4.5,
+                    4.2,
                     egui::Stroke::new(1.3_f32, theme::FAINT),
                 );
                 ui.painter().line_segment(
-                    [ic + egui::vec2(2.0, 2.0), ic + egui::vec2(6.0, 6.0)],
+                    [ic + egui::vec2(1.8, 1.8), ic + egui::vec2(5.4, 5.4)],
                     egui::Stroke::new(1.5_f32, theme::FAINT),
                 );
                 ui.add_space(4.0);
                 let search = egui::Id::new("rustpad-search");
-                let hint = state.tr("Search sounds…", "Поиск звуков…");
+                let hint = state.tr("Search sounds", "Поиск звуков");
                 let resp = ui.add_sized(
-                    [width - 52.0, 22.0],
+                    [width - 66.0, 22.0],
                     egui::TextEdit::singleline(&mut state.search)
                         .id(search)
                         .frame(false)
@@ -815,6 +758,8 @@ fn draw_search(ui: &mut egui::Ui, state: &mut AppState, uis: &mut UiState) {
                     {
                         state.search.clear();
                     }
+                } else {
+                    ui.label(label("Ctrl F", 9.5, theme::FAINT));
                 }
             });
         });
@@ -834,7 +779,7 @@ pub fn draw(state: &mut AppState, ctx: &egui::Context) {
         uis.meter_out = state.out_level;
         uis.meter_mic = state.mic_level;
     }
-    uis.entrance = ease_out(((now - uis.anim_start) / 0.55) as f32);
+    uis.entrance = ease_out(((now - uis.anim_start) / 0.28) as f32);
     if uis.last_category != state.selected_category {
         uis.last_category = state.selected_category;
         uis.category_changed_at = now;
@@ -857,32 +802,36 @@ pub fn draw(state: &mut AppState, ctx: &egui::Context) {
     }
 
     handle_close_request(state, ctx);
+    keyboard_activate(ctx);
     handle_shortcuts(state, ctx, &mut uis);
     handle_dropped_files(state, ctx);
 
     egui::TopBottomPanel::top("rustpad-topbar")
-        .exact_height(62.0)
+        .exact_height(TOPBAR_H)
         .frame(
             egui::Frame::none()
                 .fill(theme::BG)
-                .stroke(egui::Stroke::new(1.0_f32, theme::HAIRLINE))
-                .inner_margin(egui::Margin::symmetric(18.0, 9.0)),
+                .inner_margin(egui::Margin::symmetric(16.0, 7.0)),
         )
         .show(ctx, |ui| draw_topbar(state, ui, &mut uis, &mut acts));
 
     egui::TopBottomPanel::bottom("rustpad-dock")
         .resizable(false)
-        .exact_height(if uis.hotbar_collapsed { 128.0 } else { 292.0 })
+        .exact_height(if uis.hotbar_collapsed {
+            DOCK_COLLAPSED_H
+        } else {
+            DOCK_EXPANDED_H
+        })
         .frame(
             egui::Frame::none()
                 .fill(theme::BG)
-                .inner_margin(egui::Margin::symmetric(18.0, 0.0)),
+                .inner_margin(egui::Margin::symmetric(16.0, 0.0)),
         )
         .show(ctx, |ui| {
             let now = ui.ctx().input(|i| i.time);
-            let entrance = entrance_at(&uis, now, 0.14);
+            let entrance = entrance_at(&uis, now, 0.04);
             ui.multiply_opacity(entrance);
-            ui.add_space((1.0 - entrance) * 14.0);
+            ui.add_space((1.0 - entrance) * 8.0);
             draw_transport(state, ui, &mut uis, &mut acts);
             if !uis.hotbar_collapsed {
                 ui.add_space(8.0);
@@ -893,16 +842,16 @@ pub fn draw(state: &mut AppState, ctx: &egui::Context) {
     if !uis.sidebar_collapsed {
         egui::SidePanel::left("rustpad-categories")
             .resizable(false)
-            .exact_width(238.0)
+            .exact_width(SIDEBAR_W)
             .show_separator_line(false)
             .frame(
                 egui::Frame::none()
                     .fill(theme::BG)
                     .inner_margin(egui::Margin {
-                        left: 18.0,
-                        right: 10.0,
-                        top: 8.0,
-                        bottom: 12.0,
+                        left: 16.0,
+                        right: 12.0,
+                        top: 4.0,
+                        bottom: 10.0,
                     }),
             )
             .show(ctx, |ui| draw_sidebar(state, ui, &mut uis, &mut acts));
@@ -914,9 +863,9 @@ pub fn draw(state: &mut AppState, ctx: &egui::Context) {
                 .fill(theme::BG)
                 .inner_margin(egui::Margin {
                     left: 8.0,
-                    right: 18.0,
-                    top: 8.0,
-                    bottom: 12.0,
+                    right: 16.0,
+                    top: 4.0,
+                    bottom: 8.0,
                 }),
         )
         .show(ctx, |ui| draw_center(state, ui, &mut uis, &mut acts));
@@ -933,15 +882,79 @@ pub fn draw(state: &mut AppState, ctx: &egui::Context) {
     draw_drop_overlay(state, ctx);
     draw_toasts(state, ctx);
 
+    paint_focus_ring(ctx);
     apply_actions(state, ctx, acts);
 
-    let animating = (now - uis.anim_start) < 0.82
-        || (now - uis.category_changed_at) < 0.30
-        || (now - uis.hotbar_changed_at) < 0.24;
+    let animating = (now - uis.anim_start) < 0.34
+        || (now - uis.category_changed_at) < 0.22
+        || (now - uis.hotbar_changed_at) < 0.20;
     if animating || ctx.input(|i| i.pointer.has_pointer()) {
         ctx.request_repaint_after(std::time::Duration::from_millis(16));
     }
     ctx.data_mut(|d| d.insert_temp(ui_id, uis));
+}
+
+fn paint_focus_ring(ctx: &egui::Context) {
+    if ctx.wants_keyboard_input() {
+        return;
+    }
+    let Some(id) = ctx.memory(|m| m.focused()) else {
+        return;
+    };
+    let Some(resp) = ctx.read_response(id) else {
+        return;
+    };
+    if !resp.sense.click || !resp.rect.is_positive() {
+        return;
+    }
+    let painter = ctx.layer_painter(egui::LayerId::new(
+        egui::Order::Foreground,
+        egui::Id::new("rustpad-focus-ring"),
+    ));
+    painter.rect_stroke(
+        resp.rect.shrink(1.0),
+        egui::Rounding::same(6.0),
+        egui::Stroke::new(1.5_f32, theme::TEXT),
+    );
+}
+
+/// egui exposes focus for custom-painted widgets but only pointer activation.
+/// Turn Enter/Space on the focused control into the pointer pair the widget
+/// already understands, so the whole custom shell is keyboard operable.
+fn keyboard_activate(ctx: &egui::Context) {
+    if ctx.wants_keyboard_input() {
+        return;
+    }
+    let pressed = ctx.input(|i| i.key_pressed(egui::Key::Enter) || i.key_pressed(egui::Key::Space));
+    if !pressed {
+        return;
+    }
+    let Some(id) = ctx.memory(|m| m.focused()) else {
+        return;
+    };
+    let Some(resp) = ctx.read_response(id) else {
+        return;
+    };
+    if !resp.sense.click || !resp.rect.is_positive() {
+        return;
+    }
+    let pos = resp.rect.center();
+    let modifiers = ctx.input(|i| i.modifiers);
+    ctx.input_mut(|i| {
+        i.events.push(egui::Event::PointerMoved(pos));
+        i.events.push(egui::Event::PointerButton {
+            pos,
+            button: egui::PointerButton::Primary,
+            pressed: true,
+            modifiers,
+        });
+        i.events.push(egui::Event::PointerButton {
+            pos,
+            button: egui::PointerButton::Primary,
+            pressed: false,
+            modifiers,
+        });
+    });
 }
 
 // -------------------------------------------------------------- menu bar
@@ -949,100 +962,120 @@ pub fn draw(state: &mut AppState, ctx: &egui::Context) {
 fn draw_topbar(state: &mut AppState, ui: &mut egui::Ui, uis: &mut UiState, acts: &mut Vec<Act>) {
     ui.multiply_opacity(uis.entrance);
     let bar = ui.max_rect();
-    ui.painter().circle_filled(
-        egui::pos2(bar.left() + 26.0, bar.top() - 26.0),
-        110.0,
-        theme::accent_tint(12),
-    );
     ui.painter().line_segment(
         [
-            egui::pos2(bar.left() + 18.0, bar.bottom() - 0.5),
-            egui::pos2(bar.right() - 18.0, bar.bottom() - 0.5),
+            egui::pos2(bar.left(), bar.bottom() - 0.5),
+            egui::pos2(bar.right(), bar.bottom() - 0.5),
         ],
         egui::Stroke::new(1.0_f32, theme::white(9)),
     );
-    ui.horizontal_centered(|ui| {
-        draw_logo(ui, state);
-        ui.add_space(4.0);
-        let side_tip = state.tr(
-            "Show or hide the categories",
-            "Показать или скрыть категории",
-        );
-        if top_icon(ui, TopIcon::Sidebar, !uis.sidebar_collapsed, &side_tip).clicked() {
-            uis.sidebar_collapsed = !uis.sidebar_collapsed;
-        }
-        ui.add_space(2.0);
-        ui.scope(|ui| {
-            ui.spacing_mut().button_padding = egui::vec2(9.0, 6.0);
-            ui.style_mut()
-                .text_styles
-                .insert(egui::TextStyle::Button, egui::FontId::proportional(13.0));
-            draw_menu_buttons(state, ui, uis, acts);
-        });
 
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            let settings_tip = state.tr("Settings", "Настройки");
-            if top_icon(ui, TopIcon::Settings, state.show_settings, &settings_tip).clicked() {
-                state.show_settings = !state.show_settings;
-            }
-            let editor_tip = state.tr("Editor", "Редактор");
-            if top_icon(ui, TopIcon::Editor, state.show_editor, &editor_tip).clicked() {
-                state.show_editor = !state.show_editor;
-                if state.show_editor && state.editor.is_none() {
-                    acts.push(Act::OpenEditor(None));
+    let width = ui.available_width();
+    let narrow = width < 980.0;
+    let left_w = if narrow { 178.0 } else { 326.0 };
+    let right_w = 286.0;
+    let center_w = (width - left_w - right_w).max(200.0);
+    let search_w = (center_w - 28.0).clamp(190.0, 320.0);
+
+    ui.horizontal_centered(|ui| {
+        ui.allocate_ui_with_layout(
+            egui::vec2(left_w, ui.available_height()),
+            egui::Layout::left_to_right(egui::Align::Center),
+            |ui| {
+                draw_logo(ui, state);
+                ui.add_space(2.0);
+                let side_tip = state.tr(
+                    "Show or hide the categories",
+                    "Показать или скрыть категории",
+                );
+                if top_icon(ui, TopIcon::Sidebar, !uis.sidebar_collapsed, &side_tip).clicked() {
+                    uis.sidebar_collapsed = !uis.sidebar_collapsed;
                 }
-            }
-            let rec_tip = state.tr("Recorder", "Запись");
-            if top_icon(ui, TopIcon::Record, state.show_recorder, &rec_tip).clicked() {
-                state.show_recorder = !state.show_recorder;
-            }
-            let tts_tip = state.tr("Text to speech", "Синтез речи");
-            if top_icon(ui, TopIcon::Tts, state.show_tts, &tts_tip).clicked() {
-                state.show_tts = !state.show_tts;
-            }
-            let hk_tip = state.tr("Hotkey overview", "Обзор горячих клавиш");
-            if top_icon(ui, TopIcon::Hotkeys, state.show_hotkeys, &hk_tip).clicked() {
-                state.show_hotkeys = !state.show_hotkeys;
-            }
-            ui.add_space(6.0);
-            draw_search(ui, state, uis);
-            if state.cfg.mic_passthrough && state.cfg.mic_output_device.is_some() {
-                ui.add_space(4.0);
-                mic_chip(ui, state.mic_level);
-            }
-            if state.cfg.mic_passthrough && state.cfg.mic_output_device.is_none() {
-                ui.add_space(4.0);
-                let chip = state.tr("Set up mic", "Настроить микрофон");
-                if setup_chip(ui, &chip).clicked() {
-                    acts.push(Act::ShowMicSetup);
+                if !narrow {
+                    ui.add_space(4.0);
+                    ui.scope(|ui| {
+                        ui.spacing_mut().button_padding = egui::vec2(8.0, 6.0);
+                        ui.spacing_mut().item_spacing.x = 8.0;
+                        ui.style_mut()
+                            .text_styles
+                            .insert(egui::TextStyle::Button, egui::FontId::proportional(12.0));
+                        ui.visuals_mut().widgets.inactive.fg_stroke =
+                            egui::Stroke::new(1.0_f32, theme::MUTED);
+                        draw_menu_buttons(state, ui, uis, acts);
+                    });
                 }
-            }
-        });
+            },
+        );
+
+        ui.allocate_ui_with_layout(
+            egui::vec2(center_w, ui.available_height()),
+            egui::Layout::left_to_right(egui::Align::Center),
+            |ui| {
+                ui.add_space((center_w - search_w).max(0.0) / 2.0);
+                draw_search(ui, state, uis, search_w);
+            },
+        );
+
+        ui.allocate_ui_with_layout(
+            egui::vec2(right_w, ui.available_height()),
+            egui::Layout::right_to_left(egui::Align::Center),
+            |ui| {
+                let settings_tip = state.tr("Settings", "Настройки");
+                if top_icon(ui, TopIcon::Settings, state.show_settings, &settings_tip).clicked() {
+                    state.show_settings = !state.show_settings;
+                }
+                let editor_tip = state.tr("Editor", "Редактор");
+                if top_icon(ui, TopIcon::Editor, state.show_editor, &editor_tip).clicked() {
+                    state.show_editor = !state.show_editor;
+                    if state.show_editor && state.editor.is_none() {
+                        acts.push(Act::OpenEditor(None));
+                    }
+                }
+                let rec_tip = state.tr("Recorder", "Запись");
+                if top_icon(ui, TopIcon::Record, state.show_recorder, &rec_tip).clicked() {
+                    state.show_recorder = !state.show_recorder;
+                }
+                let tts_tip = state.tr("Text to speech", "Синтез речи");
+                if top_icon(ui, TopIcon::Tts, state.show_tts, &tts_tip).clicked() {
+                    state.show_tts = !state.show_tts;
+                }
+                let hk_tip = state.tr("Hotkey overview", "Обзор горячих клавиш");
+                if top_icon(ui, TopIcon::Hotkeys, state.show_hotkeys, &hk_tip).clicked() {
+                    state.show_hotkeys = !state.show_hotkeys;
+                }
+                ui.add_space(8.0);
+                if state.cfg.mic_passthrough && state.cfg.mic_output_device.is_some() {
+                    mic_chip(ui, state.mic_level);
+                } else if state.cfg.mic_passthrough && state.cfg.mic_output_device.is_none() {
+                    let chip = state.tr("Set up mic", "Настроить микрофон");
+                    if setup_chip(ui, &chip).clicked() {
+                        acts.push(Act::ShowMicSetup);
+                    }
+                }
+            },
+        );
     });
 }
 
 fn draw_logo(ui: &mut egui::Ui, state: &AppState) {
-    let (rect, _) = ui.allocate_exact_size(egui::vec2(30.0, 30.0), egui::Sense::hover());
-    let c = rect.center();
-    ui.painter().circle_filled(c, 14.0, theme::ACCENT);
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(26.0, 26.0), egui::Sense::hover());
     ui.painter()
-        .circle_stroke(c, 14.0, egui::Stroke::new(1.0_f32, theme::white(60)));
-    let t = ui.ctx().input(|i| i.time) as f32;
-    for (i, h) in [7.0_f32, 13.0, 5.0].iter().enumerate() {
-        let h = *h + (t * 2.6 + i as f32 * 1.4).sin() * 1.7;
-        let x = c.x - 5.0 + i as f32 * 5.0;
+        .rect_filled(rect, egui::Rounding::same(8.0), theme::ACCENT);
+    let c = rect.center();
+    for (i, h) in [6.0_f32, 11.0, 7.0].iter().enumerate() {
+        let x = c.x - 4.5 + i as f32 * 4.5;
         ui.painter().rect_filled(
-            egui::Rect::from_center_size(egui::pos2(x, c.y), egui::vec2(2.4, h)),
-            egui::Rounding::same(1.2),
-            egui::Color32::WHITE,
+            egui::Rect::from_center_size(egui::pos2(x, c.y), egui::vec2(2.0, *h)),
+            egui::Rounding::same(1.0),
+            theme::ON_ACCENT,
         );
     }
     ui.add_space(8.0);
-    ui.label(display_label("RustPad", 18.0, theme::TEXT));
+    ui.label(display_label("RustPad", 16.5, theme::TEXT));
     if state.dirty {
-        ui.add_space(4.0);
-        let (dot, _) = ui.allocate_exact_size(egui::vec2(14.0, 14.0), egui::Sense::hover());
-        ui.painter().circle_filled(dot.center(), 3.0, theme::AMBER);
+        ui.add_space(5.0);
+        let (dot, _) = ui.allocate_exact_size(egui::vec2(12.0, 12.0), egui::Sense::hover());
+        ui.painter().circle_filled(dot.center(), 2.6, theme::AMBER);
     }
 }
 
@@ -1229,23 +1262,15 @@ fn play_mode_name(state: &AppState, mode: PlayMode) -> String {
 
 fn draw_sidebar(state: &mut AppState, ui: &mut egui::Ui, uis: &mut UiState, acts: &mut Vec<Act>) {
     let now = ui.ctx().input(|i| i.time);
-    let entrance = entrance_at(uis, now, 0.04);
+    let entrance = entrance_at(uis, now, 0.0);
     ui.multiply_opacity(entrance);
-    ui.add_space((1.0 - entrance) * 10.0);
+    ui.add_space((1.0 - entrance) * 6.0);
     ui.horizontal(|ui| {
-        ui.vertical(|ui| {
-            ui.label(display_label(
-                state.tr("Library", "Библиотека"),
-                20.0,
-                theme::TEXT,
-            ));
-            let n = state.list.categories.len();
-            ui.label(label(
-                format!("{} {}", n, state.tr("collections", "коллекций")),
-                11.0,
-                theme::FAINT,
-            ));
-        });
+        ui.label(display_label(
+            state.tr("Library", "Библиотека"),
+            15.5,
+            theme::TEXT,
+        ));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             let new_tip = state.tr("New category", "Новая категория");
             if ghost_plus(ui, &new_tip).clicked() {
@@ -1253,9 +1278,9 @@ fn draw_sidebar(state: &mut AppState, ui: &mut egui::Ui, uis: &mut UiState, acts
             }
         });
     });
-    ui.add_space(10.0);
+    ui.add_space(12.0);
 
-    let footer_h = 96.0;
+    let footer_h = 108.0;
     let scroll_h = (ui.available_height() - footer_h).max(120.0);
     egui::ScrollArea::vertical()
         .max_height(scroll_h)
@@ -1281,18 +1306,18 @@ fn draw_sidebar(state: &mut AppState, ui: &mut egui::Ui, uis: &mut UiState, acts
                 ui.painter().rect_filled(
                     egui::Rect::from_min_size(
                         egui::pos2(row_left, row_top + 1.0),
-                        egui::vec2(row_width, 38.0),
+                        egui::vec2(row_width, CATEGORY_ROW_H - 2.0),
                     ),
-                    egui::Rounding::same(10.0),
-                    theme::accent_tint(32),
+                    egui::Rounding::same(8.0),
+                    theme::white(7),
                 );
                 ui.painter().rect_filled(
                     egui::Rect::from_min_size(
                         egui::pos2(row_left, row_top + 10.0),
-                        egui::vec2(3.0, 20.0),
+                        egui::vec2(2.0, 18.0),
                     ),
-                    egui::Rounding::same(2.0),
-                    theme::ACCENT,
+                    egui::Rounding::same(1.0),
+                    theme::TEXT,
                 );
             }
             let mut new_rows = Vec::with_capacity(count);
@@ -1313,7 +1338,7 @@ fn draw_sidebar(state: &mut AppState, ui: &mut egui::Ui, uis: &mut UiState, acts
                 let selected = state.selected_category == i;
 
                 let (rect, resp) = ui.allocate_exact_size(
-                    egui::vec2(ui.available_width(), 40.0),
+                    egui::vec2(ui.available_width(), CATEGORY_ROW_H),
                     egui::Sense::click(),
                 );
                 new_rows.push(rect);
@@ -1323,42 +1348,50 @@ fn draw_sidebar(state: &mut AppState, ui: &mut egui::Ui, uis: &mut UiState, acts
                 if hover > 0.01 && !selected {
                     ui.painter().rect_filled(
                         rect.shrink2(egui::vec2(0.0, 1.0)),
-                        egui::Rounding::same(10.0),
-                        theme::white((hover * 7.0) as u8),
+                        egui::Rounding::same(8.0),
+                        theme::white((hover * 6.0) as u8),
                     );
                 }
 
                 let dot = color
                     .map(app::rgb_to_egui)
                     .unwrap_or_else(|| category_tint(&name));
-                let avatar = rect.left_center() + egui::vec2(16.0, 0.0);
-                ui.painter()
-                    .circle_filled(avatar, 10.0, tint(dot, if selected { 60 } else { 46 }));
-                if selected {
-                    ui.painter().circle_stroke(
+                let avatar = rect.left_center() + egui::vec2(13.0, 0.0);
+                if is_all {
+                    draw_folder(
+                        ui.painter(),
                         avatar,
-                        10.0,
-                        egui::Stroke::new(1.0_f32, tint(dot, 180)),
+                        if selected { theme::TEXT } else { theme::MUTED },
                     );
+                } else {
+                    ui.painter().circle_filled(avatar, 3.4, dot);
+                    if selected {
+                        ui.painter().circle_stroke(
+                            avatar,
+                            6.2,
+                            egui::Stroke::new(1.0_f32, tint(dot, 150)),
+                        );
+                    }
                 }
-                draw_folder(
-                    ui.painter(),
-                    avatar,
-                    if selected { theme::TEXT } else { dot },
-                );
                 ui.painter().text(
-                    rect.left_center() + egui::vec2(34.0, 0.0),
+                    rect.left_center() + egui::vec2(26.0, 0.0),
                     egui::Align2::LEFT_CENTER,
-                    truncate_to(&name, 19),
-                    egui::FontId::proportional(13.0),
+                    truncate_to(&name, 21),
+                    egui::FontId::proportional(12.5),
                     if selected { theme::TEXT } else { theme::MUTED },
                 );
+                let count_rect = egui::Rect::from_center_size(
+                    rect.right_center() - egui::vec2(16.0, 0.0),
+                    egui::vec2(26.0, 18.0),
+                );
+                ui.painter()
+                    .rect_filled(count_rect, egui::Rounding::same(5.0), theme::white(5));
                 ui.painter().text(
-                    rect.right_center() - egui::vec2(4.0, 0.0),
-                    egui::Align2::RIGHT_CENTER,
+                    count_rect.center(),
+                    egui::Align2::CENTER_CENTER,
                     sounds.to_string(),
-                    egui::FontId::proportional(11.0),
-                    if selected { theme::TEXT } else { theme::FAINT },
+                    egui::FontId::monospace(9.5),
+                    if selected { theme::MUTED } else { theme::FAINT },
                 );
 
                 if resp.clicked() {
@@ -1420,34 +1453,39 @@ fn draw_sidebar(state: &mut AppState, ui: &mut egui::Ui, uis: &mut UiState, acts
             uis.sidebar_rows = new_rows;
         });
 
-    ui.add_space(8.0);
+    ui.add_space(10.0);
     let add = state.tr("Add sounds", "Добавить звуки");
     if wide_button(ui, &add, true).clicked() {
         acts.push(Act::PickFiles);
     }
-    ui.add_space(6.0);
+    ui.add_space(8.0);
     let configured = state.cfg.mic_output_device.is_some();
     let mic_name = state
         .cfg
         .mic_output_device
         .clone()
-        .map(|n| truncate_to(&n, 18))
+        .map(|n| truncate_to(&n, 20))
         .unwrap_or_else(|| {
             state
                 .tr("Microphone not set up", "Микрофон не настроен")
                 .to_string()
         });
     let (rect, resp) =
-        ui.allocate_exact_size(egui::vec2(ui.available_width(), 32.0), egui::Sense::click());
+        ui.allocate_exact_size(egui::vec2(ui.available_width(), 52.0), egui::Sense::click());
     let hover = ui
         .ctx()
         .animate_bool_with_time(resp.id, resp.hovered(), 0.12);
     ui.painter().rect_filled(
         rect,
-        egui::Rounding::same(9.0),
-        theme::white((5.0 + hover * 7.0) as u8),
+        egui::Rounding::same(8.0),
+        theme::white((5.0 + hover * 6.0) as u8),
     );
-    let dot = rect.left_center() + egui::vec2(12.0, 0.0);
+    ui.painter().rect_stroke(
+        rect,
+        egui::Rounding::same(8.0),
+        egui::Stroke::new(1.0_f32, theme::HAIRLINE),
+    );
+    let dot = rect.left_center() + egui::vec2(12.0, -14.0);
     ui.painter().circle_filled(
         dot,
         3.2,
@@ -1458,17 +1496,28 @@ fn draw_sidebar(state: &mut AppState, ui: &mut egui::Ui, uis: &mut UiState, acts
         },
     );
     ui.painter().text(
-        rect.left_center() + egui::vec2(22.0, 0.0),
+        rect.left_center() + egui::vec2(22.0, -14.0),
+        egui::Align2::LEFT_CENTER,
+        state.tr("Mic route", "Маршрут микрофона"),
+        egui::FontId::proportional(9.0),
+        theme::FAINT,
+    );
+    ui.painter().text(
+        rect.left_center() + egui::vec2(12.0, 8.0),
         egui::Align2::LEFT_CENTER,
         mic_name,
         egui::FontId::proportional(10.5),
-        theme::FAINT,
+        if configured {
+            theme::MUTED
+        } else {
+            theme::AMBER
+        },
     );
     ui.painter().text(
         rect.right_center() - egui::vec2(8.0, 0.0),
         egui::Align2::RIGHT_CENTER,
         "›",
-        egui::FontId::proportional(14.0),
+        egui::FontId::proportional(13.0),
         theme::FAINT,
     );
     if resp.clicked() {
@@ -1482,9 +1531,9 @@ fn draw_center(state: &mut AppState, ui: &mut egui::Ui, uis: &mut UiState, acts:
     let vis = ui.visuals().clone();
     let now = ui.ctx().input(|i| i.time);
     let cat_t = ease_out(((now - uis.category_changed_at) / 0.26) as f32);
-    let entrance = entrance_at(uis, now, 0.08);
-    ui.multiply_opacity(entrance * (0.35 + 0.65 * cat_t));
-    ui.add_space((1.0 - entrance) * 10.0 + (1.0 - cat_t) * 6.0);
+    let entrance = entrance_at(uis, now, 0.02);
+    ui.multiply_opacity(entrance * (0.55 + 0.45 * cat_t));
+    ui.add_space((1.0 - entrance) * 6.0 + (1.0 - cat_t) * 4.0);
 
     let (cat_name, is_all) = state
         .list
@@ -1501,24 +1550,27 @@ fn draw_center(state: &mut AppState, ui: &mut egui::Ui, uis: &mut UiState, acts:
     let total = state.list.sounds.len();
 
     ui.horizontal(|ui| {
-        ui.vertical(|ui| {
-            ui.label(display_label(&cat_title, 24.0, theme::TEXT));
-            ui.label(label(
-                format!(
-                    "{visible} {} · {total} {}",
-                    state.tr("sounds", "звуков"),
-                    state.tr("total", "всего")
-                ),
-                12.0,
-                theme::FAINT,
-            ));
+        ui.horizontal(|ui| {
+            let dot = state
+                .list
+                .categories
+                .get(state.selected_category)
+                .and_then(|c| c.color)
+                .map(app::rgb_to_egui)
+                .unwrap_or(theme::MUTED);
+            let (r, _) = ui.allocate_exact_size(egui::vec2(8.0, 8.0), egui::Sense::hover());
+            ui.painter().circle_filled(r.center(), 4.0, dot);
+            ui.add_space(7.0);
+            ui.label(display_label(&cat_title, 23.0, theme::TEXT));
+            ui.add_space(7.0);
+            ui.label(label(format!("{visible} / {total}"), 10.0, theme::FAINT));
         });
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             let add = state.tr("Add sounds", "Добавить звуки");
             if pill_button(ui, &add, false, true).clicked() {
                 acts.push(Act::PickFiles);
             }
-            ui.add_space(4.0);
+            ui.add_space(2.0);
             let folder = state.tr("Add folder", "Добавить папку");
             if pill_button(ui, &folder, false, false).clicked() {
                 acts.push(Act::PickFolder);
@@ -1527,13 +1579,13 @@ fn draw_center(state: &mut AppState, ui: &mut egui::Ui, uis: &mut UiState, acts:
                 ui.add_space(6.0);
                 ui.label(label(
                     state.tr("Unsaved", "Не сохранено"),
-                    11.0,
+                    10.0,
                     theme::AMBER,
                 ));
             }
         });
     });
-    ui.add_space(10.0);
+    ui.add_space(8.0);
 
     let mut ids = state.visible_ids();
     sort_ids(state, &mut ids, uis.sort_col, uis.sort_desc);
@@ -1547,18 +1599,20 @@ fn draw_center(state: &mut AppState, ui: &mut egui::Ui, uis: &mut UiState, acts:
                     let (rect, _) =
                         ui.allocate_exact_size(egui::vec2(64.0, 64.0), egui::Sense::hover());
                     ui.painter()
-                        .circle_filled(rect.center(), 30.0, theme::accent_tint(28));
+                        .circle_filled(rect.center(), 30.0, theme::white(4));
                     ui.painter().circle_stroke(
                         rect.center(),
                         30.0,
-                        egui::Stroke::new(1.0_f32, theme::accent_tint(70)),
+                        egui::Stroke::new(1.0_f32, theme::HAIRLINE_STRONG),
                     );
-                    ui.painter().text(
-                        rect.center(),
-                        egui::Align2::CENTER_CENTER,
-                        "♪",
-                        egui::FontId::proportional(28.0),
-                        theme::ACCENT,
+                    let c = rect.center();
+                    ui.painter().line_segment(
+                        [c + egui::vec2(-7.0, 0.0), c + egui::vec2(7.0, 0.0)],
+                        egui::Stroke::new(1.4_f32, theme::MUTED),
+                    );
+                    ui.painter().line_segment(
+                        [c + egui::vec2(0.0, -7.0), c + egui::vec2(0.0, 7.0)],
+                        egui::Stroke::new(1.4_f32, theme::MUTED),
                     );
                     ui.add_space(14.0);
                     ui.label(display_label(
@@ -1591,43 +1645,45 @@ fn draw_center(state: &mut AppState, ui: &mut egui::Ui, uis: &mut UiState, acts:
     let mut secondary: Option<u32> = None;
 
     card_frame()
-        .inner_margin(egui::Margin::symmetric(6.0, 4.0))
+        .inner_margin(egui::Margin {
+            left: 2.0,
+            right: 10.0,
+            top: 2.0,
+            bottom: 2.0,
+        })
         .show(ui, |ui| {
             card_highlight(ui);
+            let row_painter = ui.painter().clone();
             TableBuilder::new(ui)
                 .id_salt("rustpad-sounds")
-                .striped(true)
+                .striped(false)
                 .resizable(false)
                 .sense(egui::Sense::click())
                 .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
-                .column(Column::exact(34.0))
-                .column(Column::exact(36.0))
-                .column(Column::initial(250.0).at_least(120.0).clip(true))
-                .column(Column::exact(62.0))
-                .column(Column::initial(86.0).at_least(58.0).clip(true))
-                .column(Column::exact(52.0))
-                .column(Column::initial(84.0).at_least(56.0).clip(true))
-                .column(Column::remainder().at_least(80.0).clip(true))
-                .header(32.0, |mut header| {
-                    header.col(|ui| header_cell(ui, uis, SortCol::Index, state.tr("#", "№")));
+                .column(Column::exact(30.0))
+                .column(Column::exact(40.0))
+                .column(Column::remainder().at_least(160.0).clip(true))
+                .column(Column::exact(64.0))
+                .column(Column::exact(92.0))
+                .column(Column::exact(54.0))
+                .header(30.0, |mut header| {
+                    header.col(|_ui| {});
                     header.col(|_ui| {});
                     header.col(|ui| {
-                        header_cell(ui, uis, SortCol::Title, state.tr("Title", "Название"))
+                        header_cell(ui, uis, SortCol::Title, state.tr("TITLE", "НАЗВАНИЕ"))
                     });
                     header.col(|ui| {
-                        header_cell(ui, uis, SortCol::Duration, state.tr("Duration", "Время"))
+                        header_cell_right(ui, uis, SortCol::Duration, state.tr("TIME", "ВРЕМЯ"))
                     });
                     header.col(|ui| {
-                        header_cell(ui, uis, SortCol::Hotkey, state.tr("Hotkey", "Клавиша"))
+                        header_cell(ui, uis, SortCol::Hotkey, state.tr("KEY", "КЛАВИША"))
                     });
                     header.col(|ui| {
-                        header_cell(ui, uis, SortCol::Plays, state.tr("Plays", "Проигр."))
+                        header_cell_right(ui, uis, SortCol::Plays, state.tr("PLAYS", "ПРОИГР."))
                     });
-                    header.col(|ui| header_cell(ui, uis, SortCol::Tag, state.tr("Tag", "Метка")));
-                    header.col(|ui| header_cell(ui, uis, SortCol::File, state.tr("File", "Файл")));
                 })
                 .body(|body| {
-                    body.rows(36.0, ids.len(), |mut row| {
+                    body.rows(TABLE_ROW_H, ids.len(), |mut row| {
                         let index = row.index();
                         let Some(id) = ids.get(index).copied() else {
                             return;
@@ -1638,15 +1694,9 @@ fn draw_center(state: &mut AppState, ui: &mut egui::Ui, uis: &mut UiState, acts:
                         let exists = sound.path.is_file();
                         row.set_selected(selected == Some(id));
 
-                        let title = if exists {
-                            sound.title.clone()
-                        } else {
-                            format!("⚠ {}", sound.title)
-                        };
+                        let title = sound.title.clone();
                         let title_color = if !exists {
                             vis.error_fg_color
-                        } else if let Some(c) = sound.color {
-                            app::rgb_to_egui(c)
                         } else {
                             vis.text_color()
                         };
@@ -1663,31 +1713,75 @@ fn draw_center(state: &mut AppState, ui: &mut egui::Ui, uis: &mut UiState, acts:
                             if is_playing {
                                 playing_indicator(ui);
                             } else {
-                                ui.label(label(format!("{}", index + 1), 12.0, theme::FAINT));
+                                ui.label(label(format!("{:02}", index + 1), 10.0, theme::FAINT));
                             }
                         });
                         row.col(|ui| sound_tile(ui, cover, id, is_playing));
                         row.col(|ui| {
-                            ui.colored_label(title_color, title.clone())
-                                .on_hover_text(path.clone());
+                            ui.add_space(4.0);
+                            ui.vertical(|ui| {
+                                ui.label(label(&title, 13.0, title_color))
+                                    .on_hover_text(path.clone());
+                                ui.add_space(1.0);
+                                ui.horizontal(|ui| {
+                                    ui.spacing_mut().item_spacing.x = 6.0;
+                                    ui.label(label(&file, 9.5, theme::FAINT));
+                                    if !tag.trim().is_empty() {
+                                        ui.label(label(&tag, 9.0, theme::MUTED));
+                                    }
+                                    if !exists {
+                                        ui.label(label(
+                                            state.tr("missing", "нет файла"),
+                                            9.0,
+                                            theme::RED,
+                                        ));
+                                    }
+                                });
+                            });
                         });
                         row.col(|ui| {
-                            ui.label(duration);
+                            ui.with_layout(
+                                egui::Layout::right_to_left(egui::Align::Center),
+                                |ui| {
+                                    ui.label(mono(duration, 10.5, theme::MUTED));
+                                },
+                            );
                         });
                         row.col(|ui| {
-                            ui.label(hotkey);
+                            if !hotkey.is_empty() {
+                                kbd_chip(ui, &hotkey);
+                            }
                         });
                         row.col(|ui| {
-                            ui.label(format!("{plays}"));
-                        });
-                        row.col(|ui| {
-                            ui.label(tag);
-                        });
-                        row.col(|ui| {
-                            ui.label(file).on_hover_text(path);
+                            ui.with_layout(
+                                egui::Layout::right_to_left(egui::Align::Center),
+                                |ui| {
+                                    ui.label(mono(format!("{plays}"), 10.5, theme::FAINT));
+                                },
+                            );
                         });
 
                         let resp = row.response();
+                        let row_rect = resp.rect;
+                        if index + 1 < ids.len() {
+                            row_painter.line_segment(
+                                [
+                                    egui::pos2(row_rect.left() + 8.0, row_rect.bottom() - 0.5),
+                                    egui::pos2(row_rect.right() - 8.0, row_rect.bottom() - 0.5),
+                                ],
+                                egui::Stroke::new(1.0_f32, theme::white(6)),
+                            );
+                        }
+                        if selected == Some(id) {
+                            row_painter.rect_filled(
+                                egui::Rect::from_min_size(
+                                    egui::pos2(row_rect.left(), row_rect.top() + 7.0),
+                                    egui::vec2(2.0, (row_rect.height() - 14.0).max(4.0)),
+                                ),
+                                egui::Rounding::same(1.0),
+                                theme::TEXT,
+                            );
+                        }
                         if resp.clicked() {
                             clicked = Some(id);
                         } else if resp.secondary_clicked() {
@@ -1840,36 +1934,33 @@ fn sound_tile(ui: &mut egui::Ui, color: Option<Rgb>, id: u32, playing: bool) {
         .unwrap_or_else(|| app::rgb_to_egui(PRESET_COLORS[id as usize % PRESET_COLORS.len()]));
     ui.painter().rect_filled(
         rect.shrink(1.0),
-        egui::Rounding::same(8.0),
-        base.gamma_multiply(0.28),
+        egui::Rounding::same(7.0),
+        base.gamma_multiply(0.17),
     );
     ui.painter().rect_stroke(
         rect.shrink(1.0),
-        egui::Rounding::same(8.0),
+        egui::Rounding::same(7.0),
         egui::Stroke::new(
             1.0_f32,
             if playing {
-                theme::ACCENT
+                theme::TEXT
             } else {
-                base.gamma_multiply(0.55)
+                base.gamma_multiply(0.45)
             },
         ),
     );
-    if playing {
-        theme::glow(
-            ui.painter(),
-            rect,
-            egui::Rounding::same(8.0),
-            theme::ACCENT,
-            0.7,
-        );
-    }
-    for (i, h) in [7.0_f32, 13.0, 9.0].iter().enumerate() {
-        let x = rect.center().x - 5.0 + i as f32 * 5.0;
+    let t = ui.ctx().input(|i| i.time) as f32;
+    for (i, h) in [7.0_f32, 12.0, 8.0, 10.0].iter().enumerate() {
+        let h = if playing {
+            *h + (t * 4.0 + i as f32 * 1.3).sin() * 2.0
+        } else {
+            *h
+        };
+        let x = rect.center().x - 6.0 + i as f32 * 4.0;
         ui.painter().rect_filled(
-            egui::Rect::from_center_size(egui::pos2(x, rect.center().y), egui::vec2(2.2, *h)),
-            egui::Rounding::same(1.1),
-            base,
+            egui::Rect::from_center_size(egui::pos2(x, rect.center().y), egui::vec2(1.8, h)),
+            egui::Rounding::same(0.9),
+            base.gamma_multiply(0.9),
         );
     }
 }
@@ -1884,7 +1975,7 @@ fn playing_indicator(ui: &mut egui::Ui) {
         ui.painter().rect_filled(
             egui::Rect::from_center_size(egui::pos2(x, rect.center().y), egui::vec2(2.5, h)),
             egui::Rounding::same(1.25),
-            theme::ACCENT,
+            theme::TEXT,
         );
     }
     ui.ctx()
@@ -1903,7 +1994,7 @@ fn header_cell(ui: &mut egui::Ui, uis: &mut UiState, col: SortCol, label: String
     };
     let active = uis.sort_col == col;
     let text = egui::RichText::new(format!("{}{arrow}", label.to_uppercase()))
-        .size(10.5)
+        .size(8.8)
         .color(if active { theme::TEXT } else { theme::FAINT });
     if ui.add(egui::Button::new(text).frame(false)).clicked() {
         if uis.sort_col == col {
@@ -1913,6 +2004,32 @@ fn header_cell(ui: &mut egui::Ui, uis: &mut UiState, col: SortCol, label: String
             uis.sort_desc = false;
         }
     }
+}
+
+fn header_cell_right(ui: &mut egui::Ui, uis: &mut UiState, col: SortCol, label: String) {
+    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+        header_cell(ui, uis, col, label);
+    });
+}
+
+fn kbd_chip(ui: &mut egui::Ui, text: &str) {
+    let font = egui::FontId::monospace(9.0);
+    let galley = ui
+        .painter()
+        .layout_no_wrap(text.to_owned(), font, theme::MUTED);
+    let (rect, _) = ui.allocate_exact_size(
+        egui::vec2((galley.size().x + 12.0).min(84.0), 18.0),
+        egui::Sense::hover(),
+    );
+    ui.painter()
+        .rect_filled(rect, egui::Rounding::same(4.0), theme::white(6));
+    ui.painter().rect_stroke(
+        rect,
+        egui::Rounding::same(4.0),
+        egui::Stroke::new(1.0_f32, theme::white(8)),
+    );
+    ui.painter()
+        .galley(rect.center() - galley.size() / 2.0, galley, theme::MUTED);
 }
 
 fn sort_ids(state: &AppState, ids: &mut Vec<u32>, col: SortCol, desc: bool) {
@@ -1953,21 +2070,6 @@ fn sort_ids(state: &AppState, ids: &mut Vec<u32>, col: SortCol, desc: bool) {
                 .map(|s| state.stats.play_count(&s.hash))
                 .unwrap_or_default()
         }),
-        SortCol::Tag => ids.sort_by_key(|id| {
-            state
-                .list
-                .find(*id)
-                .and_then(|s| s.tag.clone())
-                .unwrap_or_default()
-                .to_lowercase()
-        }),
-        SortCol::File => ids.sort_by_key(|id| {
-            state
-                .list
-                .find(*id)
-                .map(|s| s.file_name().to_lowercase())
-                .unwrap_or_default()
-        }),
     }
     if desc {
         ids.reverse();
@@ -1985,10 +2087,15 @@ fn hotbar_page_title(state: &AppState, index: usize, title: &str) -> String {
 }
 
 fn page_pill(ui: &mut egui::Ui, text: &str, selected: bool) -> egui::Response {
-    let font = egui::FontId::proportional(12.0);
+    let font = egui::FontId::proportional(11.0);
+    let text_color = if selected {
+        theme::ON_ACCENT
+    } else {
+        theme::MUTED
+    };
     let galley = ui
         .painter()
-        .layout_no_wrap(text.to_owned(), font, theme::TEXT);
+        .layout_no_wrap(text.to_owned(), font, text_color);
     let (rect, resp) = ui.allocate_exact_size(
         egui::vec2(galley.size().x + 22.0, 26.0),
         egui::Sense::click(),
@@ -2002,16 +2109,9 @@ fn page_pill(ui: &mut egui::Ui, text: &str, selected: bool) -> egui::Response {
         theme::SURFACE_2.lerp_to_gamma(theme::SURFACE_3, hover)
     };
     ui.painter()
-        .rect_filled(rect, egui::Rounding::same(8.0), fill);
-    ui.painter().galley(
-        rect.center() - galley.size() / 2.0,
-        galley,
-        if selected {
-            egui::Color32::WHITE
-        } else {
-            theme::MUTED
-        },
-    );
+        .rect_filled(rect, egui::Rounding::same(6.0), fill);
+    ui.painter()
+        .galley(rect.center() - galley.size() / 2.0, galley, text_color);
     resp
 }
 
@@ -2033,7 +2133,7 @@ fn toggle_chip(ui: &mut egui::Ui, text: &str, on: bool) -> egui::Response {
         theme::SURFACE_2.lerp_to_gamma(theme::SURFACE_3, hover)
     };
     ui.painter()
-        .rect_filled(rect, egui::Rounding::same(13.0), fill);
+        .rect_filled(rect, egui::Rounding::same(6.0), fill);
     ui.painter().circle_filled(
         rect.left_center() + egui::vec2(13.0, 0.0),
         3.5,
@@ -2097,11 +2197,16 @@ fn volume_slider(ui: &mut egui::Ui, value: f32) -> Option<f32> {
         .rect_filled(track, egui::Rounding::same(2.0), theme::white(20));
     let fill = egui::Rect::from_min_size(track.min, egui::vec2(track.width() * t, 4.0));
     ui.painter()
-        .rect_filled(fill, egui::Rounding::same(2.0), theme::ACCENT);
+        .rect_filled(fill, egui::Rounding::same(2.0), theme::TEXT);
     ui.painter().circle_filled(
         egui::pos2(track.left() + track.width() * t, track.center().y),
         5.0,
-        egui::Color32::WHITE,
+        theme::SURFACE,
+    );
+    ui.painter().circle_stroke(
+        egui::pos2(track.left() + track.width() * t, track.center().y),
+        5.0,
+        egui::Stroke::new(1.2_f32, theme::TEXT),
     );
     if resp.dragged() || resp.clicked() {
         if let Some(pos) = resp.interact_pointer_pos() {
@@ -2143,32 +2248,40 @@ fn meter(ui: &mut egui::Ui, level: f32, label: &str) {
     );
 }
 
-fn seek_bar(ui: &mut egui::Ui, dur: u64, pos: u64, uis: &mut UiState, acts: &mut Vec<Act>) {
+fn seek_bar(
+    ui: &mut egui::Ui,
+    dur: u64,
+    pos: u64,
+    uis: &mut UiState,
+    acts: &mut Vec<Act>,
+    width: f32,
+) {
     let dur = dur.max(1);
     let mut value = uis
         .seek_drag
         .unwrap_or(pos.min(dur) as f32)
         .clamp(0.0, dur as f32);
-    let (rect, resp) = ui.allocate_exact_size(
-        egui::vec2(ui.available_width(), 20.0),
-        egui::Sense::click_and_drag(),
-    );
+    let (rect, resp) =
+        ui.allocate_exact_size(egui::vec2(width, 20.0), egui::Sense::click_and_drag());
     let track = egui::Rect::from_center_size(rect.center(), egui::vec2(rect.width(), 4.0));
     ui.painter()
         .rect_filled(track, egui::Rounding::same(2.0), theme::white(20));
     let t = (value / dur as f32).clamp(0.0, 1.0);
     let fill = egui::Rect::from_min_size(track.min, egui::vec2(track.width() * t, 4.0));
     ui.painter()
-        .rect_filled(fill, egui::Rounding::same(2.0), theme::ACCENT);
+        .rect_filled(fill, egui::Rounding::same(2.0), theme::TEXT);
     let knob_x = track.left() + track.width() * t;
-    ui.painter().circle_filled(
+    let knob_r = if resp.hovered() || resp.dragged() {
+        6.5
+    } else {
+        5.0
+    };
+    ui.painter()
+        .circle_filled(egui::pos2(knob_x, track.center().y), knob_r, theme::SURFACE);
+    ui.painter().circle_stroke(
         egui::pos2(knob_x, track.center().y),
-        if resp.hovered() || resp.dragged() {
-            7.0
-        } else {
-            5.5
-        },
-        egui::Color32::WHITE,
+        knob_r,
+        egui::Stroke::new(1.2_f32, theme::TEXT),
     );
     if resp.hovered() || resp.dragged() {
         ui.painter().circle_filled(
@@ -2198,135 +2311,194 @@ fn draw_transport(state: &mut AppState, ui: &mut egui::Ui, uis: &mut UiState, ac
         .and_then(|id| state.list.find(id))
         .map(|s| s.title.clone())
         .unwrap_or_else(|| state.tr("Select a sound", "Выберите звук").to_string());
+    let file = current
+        .and_then(|id| state.list.find(id))
+        .map(|s| s.file_name())
+        .unwrap_or_default();
+    let cover = current
+        .and_then(|id| state.list.find(id))
+        .and_then(|s| s.color);
     let pos = state.status.position_ms;
     let dur = state.status.duration_ms.max(1);
     let voices = state.status.voices;
 
     card_frame()
-        .inner_margin(egui::Margin::symmetric(14.0, 10.0))
+        .inner_margin(egui::Margin::symmetric(16.0, 12.0))
         .show(ui, |ui| {
             card_highlight(ui);
+            let content = ui.max_rect();
+            ui.painter().line_segment(
+                [
+                    egui::pos2(content.left() + 252.0, content.top() + 10.0),
+                    egui::pos2(content.left() + 252.0, content.top() + 58.0),
+                ],
+                egui::Stroke::new(1.0_f32, theme::white(7)),
+            );
             ui.horizontal(|ui| {
-                if transport_button(ui, TransportIcon::Previous, 30.0, false, false)
-                    .on_hover_text(state.tr("Previous", "Предыдущий"))
-                    .clicked()
-                {
-                    acts.push(Act::Prev);
-                }
-                let (icon, live) = if playing {
-                    (TransportIcon::Pause, true)
-                } else {
-                    (TransportIcon::Play, current.is_some() && paused)
-                };
-                if transport_button(ui, icon, 44.0, true, live)
-                    .on_hover_text(if playing {
-                        state.tr("Pause", "Пауза")
-                    } else {
-                        state.tr("Play", "Играть")
-                    })
-                    .clicked()
-                {
-                    if playing {
-                        acts.push(Act::Pause);
-                    } else if let Some(id) = state.selected_sound.or(current) {
-                        acts.push(Act::Play(id, state.play_mode));
-                    } else {
-                        state.play_current_again();
-                    }
-                }
-                if transport_button(ui, TransportIcon::Next, 30.0, false, false)
-                    .on_hover_text(state.tr("Next", "Следующий"))
-                    .clicked()
-                {
-                    acts.push(Act::Next);
-                }
-                if transport_button(ui, TransportIcon::Stop, 28.0, false, false)
-                    .on_hover_text(state.tr("Stop", "Стоп"))
-                    .clicked()
-                {
-                    acts.push(Act::Stop);
-                }
-                if transport_button(ui, TransportIcon::Shuffle, 28.0, false, false)
-                    .on_hover_text(state.tr("Random sound", "Случайный звук"))
-                    .clicked()
-                {
-                    acts.push(Act::Random);
-                }
+                ui.allocate_ui_with_layout(
+                    egui::vec2(248.0, 44.0),
+                    egui::Layout::left_to_right(egui::Align::Center),
+                    |ui| {
+                        if let Some(id) = current {
+                            sound_tile(ui, cover, id, playing);
+                        } else {
+                            let (r, _) = ui
+                                .allocate_exact_size(egui::vec2(30.0, 30.0), egui::Sense::hover());
+                            ui.painter().rect_filled(
+                                r,
+                                egui::Rounding::same(7.0),
+                                theme::SURFACE_2,
+                            );
+                            ui.painter().rect_stroke(
+                                r,
+                                egui::Rounding::same(7.0),
+                                egui::Stroke::new(1.0_f32, theme::HAIRLINE),
+                            );
+                        }
+                        ui.add_space(10.0);
+                        ui.vertical(|ui| {
+                            ui.add_space(2.0);
+                            ui.horizontal(|ui| {
+                                if playing {
+                                    let (dot, _) = ui.allocate_exact_size(
+                                        egui::vec2(8.0, 8.0),
+                                        egui::Sense::hover(),
+                                    );
+                                    ui.painter().circle_filled(dot.center(), 3.0, theme::GREEN);
+                                    ui.add_space(1.0);
+                                }
+                                ui.label(label(truncate_to(&title, 34), 13.0, theme::TEXT));
+                            });
+                            ui.add_space(1.0);
+                            let meta = if file.is_empty() {
+                                state.tr("Nothing playing", "Ничего не играет").to_string()
+                            } else if voices > 1 {
+                                format!("{}  ·  {} {}", file, voices, state.tr("voices", "голоса"))
+                            } else {
+                                file
+                            };
+                            ui.label(label(truncate_to(&meta, 38), 9.0, theme::FAINT));
+                        });
+                    },
+                );
 
-                ui.add_space(12.0);
-                ui.vertical(|ui| {
-                    ui.label(label(truncate_to(&title, 42), 14.0, theme::TEXT));
-                    ui.add_space(1.0);
-                    ui.horizontal(|ui| {
-                        ui.label(label(
-                            format!("{} / {}", format_duration(pos), format_duration(dur)),
-                            11.0,
+                ui.allocate_ui_with_layout(
+                    egui::vec2(222.0, 44.0),
+                    egui::Layout::left_to_right(egui::Align::Center),
+                    |ui| {
+                        ui.spacing_mut().item_spacing.x = 4.0;
+                        if transport_button(ui, TransportIcon::Previous, 30.0, false, false)
+                            .on_hover_text(state.tr("Previous", "Предыдущий"))
+                            .clicked()
+                        {
+                            acts.push(Act::Prev);
+                        }
+                        let (icon, live) = if playing {
+                            (TransportIcon::Pause, true)
+                        } else {
+                            (TransportIcon::Play, current.is_some() && paused)
+                        };
+                        if transport_button(ui, icon, 42.0, true, live)
+                            .on_hover_text(if playing {
+                                state.tr("Pause", "Пауза")
+                            } else {
+                                state.tr("Play", "Играть")
+                            })
+                            .clicked()
+                        {
+                            if playing {
+                                acts.push(Act::Pause);
+                            } else if let Some(id) = state.selected_sound.or(current) {
+                                acts.push(Act::Play(id, state.play_mode));
+                            } else {
+                                state.play_current_again();
+                            }
+                        }
+                        if transport_button(ui, TransportIcon::Next, 30.0, false, false)
+                            .on_hover_text(state.tr("Next", "Следующий"))
+                            .clicked()
+                        {
+                            acts.push(Act::Next);
+                        }
+                        ui.add_space(4.0);
+                        if transport_button(ui, TransportIcon::Stop, 28.0, false, false)
+                            .on_hover_text(state.tr("Stop", "Стоп"))
+                            .clicked()
+                        {
+                            acts.push(Act::Stop);
+                        }
+                        if transport_button(ui, TransportIcon::Shuffle, 28.0, false, false)
+                            .on_hover_text(state.tr("Random sound", "Случайный звук"))
+                            .clicked()
+                        {
+                            acts.push(Act::Random);
+                        }
+                    },
+                );
+
+                ui.allocate_ui_with_layout(
+                    egui::vec2(ui.available_width(), 44.0),
+                    egui::Layout::right_to_left(egui::Align::Center),
+                    |ui| {
+                        egui::Frame::none()
+                            .fill(theme::SURFACE_2)
+                            .rounding(egui::Rounding::same(8.0))
+                            .inner_margin(egui::Margin::same(2.0))
+                            .show(ui, |ui| {
+                                ui.set_width(174.0);
+                                ui.with_layout(
+                                    egui::Layout::left_to_right(egui::Align::Center),
+                                    |ui| {
+                                        ui.spacing_mut().item_spacing.x = 1.0;
+                                        for (mode, name) in [
+                                            (PlayMode::Default, state.tr("Auto", "Авто")),
+                                            (PlayMode::Speakers, state.tr("Sound", "Звук")),
+                                            (PlayMode::Microphone, state.tr("Mic", "Мик")),
+                                            (PlayMode::Both, state.tr("Both", "Оба")),
+                                        ] {
+                                            if segment_button(ui, &name, state.play_mode == mode)
+                                                .clicked()
+                                            {
+                                                state.set_play_mode(mode);
+                                            }
+                                        }
+                                    },
+                                );
+                            });
+                        ui.add_space(8.0);
+                        uis.meter_out += (state.out_level - uis.meter_out) * 0.22;
+                        uis.meter_mic += (state.mic_level - uis.meter_mic) * 0.22;
+                        if (state.out_level - uis.meter_out).abs() > 0.004
+                            || (state.mic_level - uis.meter_mic).abs() > 0.004
+                        {
+                            ui.ctx()
+                                .request_repaint_after(std::time::Duration::from_millis(16));
+                        }
+                        meter(ui, uis.meter_out, "OUT");
+                        meter(ui, uis.meter_mic, "MIC");
+                        ui.add_space(6.0);
+                        let vol = state.cfg.master_volume;
+                        ui.label(mono(
+                            format!("{:.0}", vol.clamp(0.0, 1.5) / 1.5 * 100.0),
+                            9.5,
                             theme::FAINT,
                         ));
-                        if voices > 1 {
-                            ui.label(label(
-                                format!("· {} {}", voices, state.tr("voices", "голоса")),
-                                11.0,
-                                theme::FAINT,
-                            ));
+                        if let Some(v) = volume_slider(ui, vol) {
+                            acts.push(Act::MasterVolume(v));
                         }
-                    });
-                });
-
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    let vol = state.cfg.master_volume;
-                    if let Some(v) = volume_slider(ui, vol) {
-                        acts.push(Act::MasterVolume(v));
-                    }
-                    ui.label(label(
-                        format!("{:.0}%", vol.clamp(0.0, 1.5) / 1.5 * 100.0),
-                        10.0,
-                        theme::FAINT,
-                    ));
-                    ui.add_space(4.0);
-                    uis.meter_out += (state.out_level - uis.meter_out) * 0.22;
-                    uis.meter_mic += (state.mic_level - uis.meter_mic) * 0.22;
-                    if (state.out_level - uis.meter_out).abs() > 0.004
-                        || (state.mic_level - uis.meter_mic).abs() > 0.004
-                    {
-                        ui.ctx()
-                            .request_repaint_after(std::time::Duration::from_millis(16));
-                    }
-                    meter(ui, uis.meter_out, "OUT");
-                    meter(ui, uis.meter_mic, "MIC");
-                    ui.add_space(4.0);
-
-                    egui::Frame::none()
-                        .fill(theme::SURFACE_2)
-                        .rounding(egui::Rounding::same(9.0))
-                        .inner_margin(egui::Margin::same(2.0))
-                        .show(ui, |ui| {
-                            ui.set_width(190.0);
-                            ui.with_layout(
-                                egui::Layout::left_to_right(egui::Align::Center),
-                                |ui| {
-                                    ui.spacing_mut().item_spacing.x = 1.0;
-                                    for (mode, name) in [
-                                        (PlayMode::Default, state.tr("Auto", "Авто")),
-                                        (PlayMode::Speakers, state.tr("Sound", "Звук")),
-                                        (PlayMode::Microphone, state.tr("Mic", "Мик")),
-                                        (PlayMode::Both, state.tr("Both", "Оба")),
-                                    ] {
-                                        if segment_button(ui, &name, state.play_mode == mode)
-                                            .clicked()
-                                        {
-                                            state.set_play_mode(mode);
-                                        }
-                                    }
-                                },
-                            );
-                        });
-                });
+                    },
+                );
             });
 
-            ui.add_space(2.0);
-            seek_bar(ui, dur, pos, uis, acts);
-            ui.add_space(2.0);
+            ui.add_space(5.0);
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 8.0;
+                ui.label(mono(format_duration(pos), 9.5, theme::FAINT));
+                let width = (ui.available_width() - 42.0).max(80.0);
+                seek_bar(ui, dur, pos, uis, acts, width);
+                ui.label(mono(format_duration(dur), 9.5, theme::FAINT));
+            });
+            ui.add_space(3.0);
 
             ui.horizontal(|ui| {
                 let hk_label = state.tr("Hotkeys", "Клавиши");
@@ -2364,12 +2536,8 @@ fn draw_hotbar(state: &mut AppState, ui: &mut egui::Ui, uis: &mut UiState, acts:
         .show(ui, |ui| {
             card_highlight(ui);
             ui.horizontal(|ui| {
-                ui.label(display_label(
-                    state.tr("Hotbar", "Хотбар"),
-                    16.0,
-                    theme::TEXT,
-                ));
-                ui.add_space(8.0);
+                ui.label(label(state.tr("Hotbar", "Хотбар"), 11.0, theme::MUTED));
+                ui.add_space(10.0);
                 egui::ScrollArea::horizontal()
                     .id_salt("rustpad-hotbar-pages")
                     .auto_shrink([true, true])
@@ -2398,21 +2566,28 @@ fn draw_hotbar(state: &mut AppState, ui: &mut egui::Ui, uis: &mut UiState, acts:
                     if ui
                         .add_enabled(
                             state.list.hotbar.len() > 1,
-                            egui::Button::new(remove).frame(false),
+                            egui::Button::new(label(remove, 10.0, theme::FAINT)).frame(false),
                         )
                         .clicked()
                     {
                         acts.push(Act::RemoveHotbarPage(page_now));
                     }
                     let new_page = state.tr("New page", "Новая страница");
-                    if ui.add(egui::Button::new(new_page).frame(false)).clicked() {
+                    if ui
+                        .add(egui::Button::new(label(new_page, 10.0, theme::FAINT)).frame(false))
+                        .clicked()
+                    {
                         acts.push(Act::NewHotbarPage);
                     }
                     if ui
                         .add_enabled(
                             state.selected_sound.is_some(),
-                            egui::Button::new(state.tr("Add selected", "Добавить выбранный"))
-                                .frame(false),
+                            egui::Button::new(label(
+                                state.tr("Add selected", "Добавить выбранный"),
+                                10.0,
+                                theme::MUTED,
+                            ))
+                            .frame(false),
                         )
                         .clicked()
                     {
@@ -2449,25 +2624,32 @@ fn draw_hotbar(state: &mut AppState, ui: &mut egui::Ui, uis: &mut UiState, acts:
                     ((ui.available_width() - gap * (cols as f32 - 1.0)) / cols as f32).max(56.0);
                 ui.horizontal(|ui| {
                     let (rect, resp) =
-                        ui.allocate_exact_size(egui::vec2(cell_w, 46.0), egui::Sense::click());
+                        ui.allocate_exact_size(egui::vec2(cell_w, 50.0), egui::Sense::click());
                     let hover = ui
                         .ctx()
                         .animate_bool_with_time(resp.id, resp.hovered(), 0.12);
                     ui.painter().rect_filled(
                         rect,
-                        egui::Rounding::same(11.0),
+                        egui::Rounding::same(8.0),
                         theme::SURFACE_2.lerp_to_gamma(theme::SURFACE_3, hover),
                     );
                     ui.painter().rect_stroke(
                         rect,
-                        egui::Rounding::same(11.0),
+                        egui::Rounding::same(8.0),
                         egui::Stroke::new(1.0_f32, theme::HAIRLINE),
                     );
+                    let c = rect.center();
+                    for d in [-3.0f32, 0.0, 3.0] {
+                        ui.painter().line_segment(
+                            [c + egui::vec2(d, -6.0), c + egui::vec2(d, 6.0)],
+                            egui::Stroke::new(1.0_f32, theme::FAINT),
+                        );
+                    }
                     ui.painter().text(
-                        rect.center(),
+                        c + egui::vec2(0.0, 15.0),
                         egui::Align2::CENTER_CENTER,
-                        state.tr("+  Add selected", "+  Добавить выбранный"),
-                        egui::FontId::proportional(11.0),
+                        state.tr("Add selected", "Добавить выбранный"),
+                        egui::FontId::proportional(9.5),
                         if hover > 0.4 {
                             theme::TEXT
                         } else {
@@ -2522,67 +2704,59 @@ fn draw_hotbar(state: &mut AppState, ui: &mut egui::Ui, uis: &mut UiState, acts:
                                 let hk_text = hk
                                     .map(|h| h.display())
                                     .filter(|s| !s.is_empty())
-                                    .unwrap_or_else(|| "—".to_string());
+                                    .unwrap_or_default();
                                 let is_playing = state.status.sound_id == Some(*sound_id)
                                     && !state.status.paused;
 
                                 let (rect, resp) = ui.allocate_exact_size(
-                                    egui::vec2(cell_w, 46.0),
+                                    egui::vec2(cell_w, 50.0),
                                     egui::Sense::click(),
                                 );
                                 let hover =
                                     ui.ctx()
                                         .animate_bool_with_time(resp.id, resp.hovered(), 0.12);
-                                let base = color.map(app::rgb_to_egui).unwrap_or(theme::SURFACE_2);
-                                let fill = base.lerp_to_gamma(theme::white(22), hover * 0.28);
+                                let base = color.map(app::rgb_to_egui).unwrap_or(theme::MUTED);
                                 ui.painter().rect_filled(
                                     rect.shrink(0.5),
-                                    egui::Rounding::same(11.0),
-                                    fill,
+                                    egui::Rounding::same(8.0),
+                                    theme::SURFACE_2.lerp_to_gamma(theme::SURFACE_3, hover),
                                 );
                                 ui.painter().rect_stroke(
                                     rect.shrink(0.5),
-                                    egui::Rounding::same(11.0),
+                                    egui::Rounding::same(8.0),
                                     egui::Stroke::new(
                                         1.0_f32,
                                         if is_playing {
-                                            theme::ACCENT
+                                            theme::TEXT
                                         } else {
                                             theme::HAIRLINE
                                         },
                                     ),
                                 );
-                                if is_playing {
-                                    theme::glow(
-                                        ui.painter(),
-                                        rect,
-                                        egui::Rounding::same(11.0),
-                                        theme::ACCENT,
-                                        0.8,
-                                    );
-                                }
+                                ui.painter().rect_filled(
+                                    egui::Rect::from_min_size(
+                                        rect.left_top() + egui::vec2(8.0, 0.0),
+                                        egui::vec2((rect.width() - 16.0).max(4.0), 2.0),
+                                    ),
+                                    egui::Rounding::same(1.0),
+                                    base,
+                                );
                                 ui.painter().text(
-                                    egui::pos2(rect.left() + 11.0, rect.top() + 12.0),
+                                    egui::pos2(rect.left() + 10.0, rect.top() + 17.0),
                                     egui::Align2::LEFT_CENTER,
                                     truncate_to(&title, (cell_w / 8.0) as usize),
-                                    egui::FontId::proportional(12.0),
-                                    if color.is_some() {
-                                        egui::Color32::WHITE
-                                    } else {
-                                        theme::TEXT
-                                    },
+                                    egui::FontId::proportional(11.0),
+                                    theme::TEXT,
                                 );
-                                ui.painter().text(
-                                    egui::pos2(rect.left() + 11.0, rect.bottom() - 12.0),
-                                    egui::Align2::LEFT_CENTER,
-                                    hk_text,
-                                    egui::FontId::proportional(9.5),
-                                    if color.is_some() {
-                                        theme::white(170)
-                                    } else {
-                                        theme::FAINT
-                                    },
-                                );
+                                if !hk_text.is_empty() {
+                                    ui.painter().text(
+                                        egui::pos2(rect.left() + 10.0, rect.bottom() - 11.0),
+                                        egui::Align2::LEFT_CENTER,
+                                        hk_text,
+                                        egui::FontId::monospace(8.5),
+                                        theme::FAINT,
+                                    );
+                                }
 
                                 if resp.clicked() {
                                     acts.push(Act::Play(*sound_id, state.play_mode));
@@ -3111,7 +3285,7 @@ fn settings_hotkeys(state: &mut AppState, ui: &mut egui::Ui, acts: &mut Vec<Act>
                         let hk_text = app::hotkey_label(hk);
                         ui.label(name.clone());
                         ui.label(if hk_text.is_empty() {
-                            "—".to_string()
+                            "-".to_string()
                         } else {
                             hk_text
                         });
@@ -3175,7 +3349,7 @@ fn settings_hotkeys(state: &mut AppState, ui: &mut egui::Ui, acts: &mut Vec<Act>
             "{}: {}",
             state.tr("Key", "Клавиша"),
             if state.cfg.auto_keys_vk == 0 {
-                "—".to_string()
+                "-".to_string()
             } else {
                 hk.display()
             }
@@ -3333,33 +3507,18 @@ fn settings_tts(state: &mut AppState, ui: &mut egui::Ui) {
 fn settings_interface(
     state: &mut AppState,
     ui: &mut egui::Ui,
-    ctx: &egui::Context,
+    _ctx: &egui::Context,
     acts: &mut Vec<Act>,
 ) {
-    ui.label(egui::RichText::new(state.tr("Theme", "Тема")).strong());
-    let mut theme = state.cfg.theme;
-    let theme_before = theme;
-    ui.horizontal(|ui| {
-        ui.radio_value(
-            &mut theme,
-            rustpad_core::Theme::Light,
-            state.tr("Light", "Светлая"),
-        );
-        ui.radio_value(
-            &mut theme,
-            rustpad_core::Theme::Dark,
-            state.tr("Dark", "Тёмная"),
-        );
-        ui.radio_value(
-            &mut theme,
-            rustpad_core::Theme::System,
-            state.tr("System", "Системная"),
-        );
-    });
-    if theme != theme_before {
-        state.cfg.theme = theme;
-        crate::theme::apply_preference(ctx, theme);
-    }
+    ui.label(egui::RichText::new(state.tr("Appearance", "Оформление")).strong());
+    ui.label(label(
+        state.tr(
+            "Dark interface. The black palette is part of the app, not a theme switch.",
+            "Тёмный интерфейс. Чёрная палитра является частью приложения, а не переключаемой темой.",
+        ),
+        12.0,
+        theme::MUTED,
+    ));
 
     ui.add_space(6.0);
     ui.label(egui::RichText::new(state.tr("Language", "Язык")).strong());
@@ -3946,7 +4105,7 @@ fn draw_hotkeys_window(state: &mut AppState, ctx: &egui::Context, acts: &mut Vec
                                 ui.label(name.clone());
                                 let hk_text = app::hotkey_label(hk);
                                 ui.label(if hk_text.is_empty() {
-                                    "—".to_string()
+                                    "-".to_string()
                                 } else {
                                     hk_text
                                 });
@@ -4091,7 +4250,7 @@ fn draw_hotkeys_window(state: &mut AppState, ctx: &egui::Context, acts: &mut Vec
 fn display_hotkey(hk: Option<Hotkey>) -> String {
     let text = app::hotkey_label(hk);
     if text.is_empty() {
-        "—".to_string()
+        "-".to_string()
     } else {
         text
     }
@@ -4243,8 +4402,8 @@ fn draw_hotkey_capture(state: &mut AppState, ctx: &egui::Context) {
     }
     let title = state.tr("Assign a hotkey", "Назначение горячей клавиши");
     let explain = state.tr(
-        "Press the key combination you want to assign — it is captured automatically.",
-        "Нажмите нужную комбинацию клавиш — она будет назначена автоматически.",
+        "Press the key combination you want to assign. It is captured automatically.",
+        "Нажмите нужную комбинацию клавиш. Она будет назначена автоматически.",
     );
     let manual_hint = state.tr(
         "Or type it manually, e.g. Mouse4 or Ctrl+F1",
@@ -4311,15 +4470,15 @@ fn draw_mic_setup(state: &mut AppState, ctx: &egui::Context, acts: &mut Vec<Act>
         .fade_in(true)
         .show(ctx, |ui| {
             ui.label(display_label(
-                state.tr("Send sounds into your microphone", "Звуки — прямо в микрофон"),
+                state.tr("Send sounds into your microphone", "Звуки прямо в микрофон"),
                 22.0,
                 theme::TEXT,
             ));
             ui.add_space(4.0);
             ui.label(label(
                 state.tr(
-                    "Soundpad uses a signed audio driver. RustPad does the same in user mode with the free VB-Audio virtual cable — no Soundpad, no extra drivers of our own.",
-                    "Soundpad использует подписанный аудиодрайвер. RustPad делает то же самое в пользовательском режиме через бесплатный виртуальный кабель VB-Audio — без Soundpad и без собственных драйверов.",
+                    "Soundpad uses a signed audio driver. RustPad does the same in user mode with the free VB-Audio virtual cable, with no Soundpad and no extra drivers of our own.",
+                    "Soundpad использует подписанный аудиодрайвер. RustPad делает то же самое в пользовательском режиме через бесплатный виртуальный кабель VB-Audio, без Soundpad и без собственных драйверов.",
                 ),
                 13.0,
                 theme::MUTED,
@@ -4337,8 +4496,8 @@ fn draw_mic_setup(state: &mut AppState, ctx: &egui::Context, acts: &mut Vec<Act>
                             ui.label(label("●", 11.0, theme::GREEN));
                             ui.label(label(
                                 state.tr(
-                                    "Virtual cable detected — you are ready to go.",
-                                    "Виртуальный кабель найден — всё готово.",
+                                    "Virtual cable detected. You are ready to go.",
+                                    "Виртуальный кабель найден. Всё готово.",
                                 ),
                                 13.0,
                                 theme::TEXT,
@@ -4574,9 +4733,12 @@ fn handle_shortcuts(state: &mut AppState, ctx: &egui::Context, uis: &mut UiState
     let saving = ctx.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::S));
     let opening = ctx.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::O));
     let finding = ctx.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::F));
-    let entering = ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Enter));
+    let ui_focused = ctx.memory(|m| m.focused()).is_some() && !ctx.wants_keyboard_input();
+    let entering =
+        !ui_focused && ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Enter));
     let deleting = ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Delete));
-    let pausing = ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Space));
+    let pausing =
+        !ui_focused && ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Space));
     let escape = ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape));
 
     if opening {
@@ -4850,8 +5012,8 @@ fn apply_actions(state: &mut AppState, ctx: &egui::Context, acts: Vec<Act>) {
                     state.cable_install = Some(rustpad_platform::vbcable::start_install());
                     state.toast(
                         state.tr(
-                            "Downloading VB-CABLE — confirm the Windows prompt, then wait for the installer.",
-                            "Скачиваю VB-CABLE — подтвердите запрос Windows и дождитесь установки.",
+                            "Downloading VB-CABLE. Confirm the Windows prompt, then wait for the installer.",
+                            "Скачиваю VB-CABLE. Подтвердите запрос Windows и дождитесь установки.",
                         ),
                         false,
                     );

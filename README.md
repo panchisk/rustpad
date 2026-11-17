@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/banner.svg" alt="RustPad — a Windows soundboard written in Rust" width="100%">
+  <img src="docs/assets/banner.svg" alt="RustPad: a Windows soundboard written in Rust" width="100%">
 </p>
 
 RustPad is a soundboard for Windows, written in Rust. It reads Soundpad 4.x `.spl` lists,
@@ -19,8 +19,8 @@ engine are covered by **83 tests**, the UI is checked manually.
 
 ![RustPad main window](docs/assets/rustpad-main.png)
 
-The main view: category sidebar, sortable sound table, transport, output and microphone
-meters, hotbar pages and the current microphone route.
+The main view during playback: category sidebar, sound table, transport, output and microphone
+meters, and a six-cell hotbar. The screenshot uses a demo library, not a customer list.
 
 ## What works
 
@@ -40,7 +40,7 @@ meters, hotbar pages and the current microphone route.
   optionally only for hotkey-triggered playback.
 - **Hotbar.** Pages, six-column grid, per-cell colors and hotkeys.
 - **Extras.** Recorder (microphone or WASAPI loopback), waveform editor, SAPI text-to-speech,
-  loudness normalization, drag and drop, English/Russian UI, light and dark themes.
+  loudness normalization, drag and drop, English/Russian UI.
 - **Remote control.** The Soundpad named pipe, command names and response framing, plus a
   command-line client.
 

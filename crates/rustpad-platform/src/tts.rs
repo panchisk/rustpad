@@ -22,8 +22,8 @@ pub fn list_voices() -> Result<Vec<TtsVoice>> {
 
 /// Synthesizes `text` to a 16-bit PCM WAV file.
 ///
-/// * `rate_percent` — -10..=10 (SAPI rate), 0 = normal.
-/// * `pitch` — -10..=10, applied through SSML `<prosody pitch>`.
+/// * `rate_percent`: -10..=10 (SAPI rate), 0 = normal.
+/// * `pitch`: -10..=10, applied through SSML `<prosody pitch>`.
 pub fn synthesize_to_wav(
     text: &str,
     voice_id: Option<&str>,
